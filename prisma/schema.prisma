@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LoanFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum LoanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  WRITTEN_OFF
+}
+
+enum InstallmentStatus {
+  UPCOMING
+  DUE_TODAY
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+enum PaymentMode {
+  CASH
+  BANK_TRANSFER
+  UPI
+  OTHER
+}
+
+enum PaymentStatus {
+  POSTED
+  VOIDED
+}
+
+model Admin {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  loans     Loan[]    @relation("LoanCreatedBy")
+  payments  Payment[] @relation("PaymentCreatedBy")
+  auditLogs AuditLog[]
+}
+
+model AppSettings {
+  id            String   @id @default("singleton")
+  businessName  String   @default("Thavanai Manager")
+  currency      String   @default("INR")
+  timezone      String   @default("Asia/Kolkata")
+  receiptHeader String   @default("Thank you for your payment.")
+  receiptFooter String   @default("This is a manually recorded payment receipt.")
+  updatedAt     DateTime @updatedAt
+  updatedById   String?
+}
+
+model Customer {
+  id              String    @id @default(cuid())
+  seq             Int       @unique @default(autoincrement())
+  code            String    @unique
+  fullName        String
+  mobile          String
+  alternateMobile String?
+  address         String?
+  notes           String?
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  loans    Loan[]
+  payments Payment[]
+
+  @@index([fullName])
+  @@index([mobile])
+  @@index([archivedAt])
+}
+
+model Loan {
+  id                String        @id @default(cuid())
+  seq               Int           @unique @default(autoincrement())
+  reference         String        @unique
+  customerId        String
+  nominalAmount     Decimal       @db.Decimal(14, 2)
+  deductionAmount   Decimal       @db.Decimal(14, 2)
+  netDisbursed      Decimal       @db.Decimal(14, 2)
+  totalRepayment    Decimal       @db.Decimal(14, 2)
+  installmentAmount Decimal       @db.Decimal(14, 2)
+  installmentCount  Int
+  frequency         LoanFrequency
+  startDate         DateTime      @db.Date
+  firstDueDate      DateTime      @db.Date
+  disbursementDate  DateTime?     @db.Date
+  status            LoanStatus    @default(DRAFT)
+  notes             String?
+  terms             String?
+  createdById       String?
+  activatedAt       DateTime?
+  closedAt          DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy     Admin?        @relation("LoanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  installments  Installment[]
+  payments      Payment[]
+
+  @@index([customerId, status])
+  @@index([status])
+  @@index([status, firstDueDate])
+}
+
+model Installment {
+  id              String            @id @default(cuid())
+  loanId          String
+  sequence        Int
+  dueDate         DateTime          @db.Date
+  scheduledAmount Decimal           @db.Decimal(14, 2)
+  paidAmount      Decimal           @default(0) @db.Decimal(14, 2)
+  status          InstallmentStatus @default(UPCOMING)
+
+  loan      Loan                @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  allocations PaymentAllocation[]
+
+  @@unique([loanId, sequence])
+  @@index([loanId, dueDate])
+  @@index([status, dueDate])
+}
+
+model Payment {
+  id             String        @id @default(cuid())
+  seq            Int           @unique @default(autoincrement())
+  receiptNumber  String        @unique
+  loanId         String
+  customerId     String
+  amount         Decimal       @db.Decimal(14, 2)
+  paidAt         DateTime
+  mode           PaymentMode   @default(CASH)
+  status         PaymentStatus @default(POSTED)
+  notes          String?
+  idempotencyKey String?       @unique
+  createdById    String?
+  createdAt      DateTime      @default(now())
+  voidedAt       DateTime?
+  voidReason     String?
+
+  loan        Loan                @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  customer    Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy   Admin?              @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  allocations PaymentAllocation[]
+  reversal    PaymentReversal?
+
+  @@index([loanId, paidAt])
+  @@index([customerId, paidAt])
+  @@index([status, paidAt])
+}
+
+model PaymentAllocation {
+  id            String   @id @default(cuid())
+  paymentId     String
+  installmentId String
+  amount        Decimal  @db.Decimal(14, 2)
+  createdAt     DateTime @default(now())
+
+  payment     Payment     @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  installment Installment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentId, installmentId])
+  @@index([installmentId])
+}
+
+model PaymentReversal {
+  id           String   @id @default(cuid())
+  paymentId    String   @unique
+  amount       Decimal  @db.Decimal(14, 2)
+  reason       String
+  reversedById String?
+  reversedAt   DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([reversedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  summary    String
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  actor Admin? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([actorId])
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ipAddress String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+}
