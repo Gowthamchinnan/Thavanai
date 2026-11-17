@@ -7,6 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum LoanCategory {
+  THAVANAI
+  MONTHLY_VATTI
+  WEEKLY_RUN_VATI
+}
+
+enum InterestCalculationMethod {
+  FLAT_SIMPLE
+  REDUCING_BALANCE
+}
+
 enum LoanFrequency {
   DAILY
   WEEKLY
@@ -57,7 +68,7 @@ model Admin {
 
 model AppSettings {
   id            String   @id @default("singleton")
-  businessName  String   @default("Thavanai Manager")
+  businessName  String   @default("Siva Thul Finance")
   currency      String   @default("INR")
   timezone      String   @default("Asia/Kolkata")
   receiptHeader String   @default("Thank you for your payment.")
@@ -88,37 +99,52 @@ model Customer {
 }
 
 model Loan {
-  id                String        @id @default(cuid())
-  seq               Int           @unique @default(autoincrement())
-  reference         String        @unique
+  id                String                    @id @default(cuid())
+  seq               Int                       @unique @default(autoincrement())
+  reference         String                    @unique
   customerId        String
-  nominalAmount     Decimal       @db.Decimal(14, 2)
-  deductionAmount   Decimal       @db.Decimal(14, 2)
-  netDisbursed      Decimal       @db.Decimal(14, 2)
-  totalRepayment    Decimal       @db.Decimal(14, 2)
-  installmentAmount Decimal       @db.Decimal(14, 2)
-  installmentCount  Int
-  frequency         LoanFrequency
-  startDate         DateTime      @db.Date
-  firstDueDate      DateTime      @db.Date
-  disbursementDate  DateTime?     @db.Date
-  status            LoanStatus    @default(DRAFT)
+  category          LoanCategory              @default(THAVANAI)
+  nominalAmount     Decimal                   @db.Decimal(14, 2)
+  deductionAmount   Decimal                   @default(0) @db.Decimal(14, 2)
+  netDisbursed      Decimal                   @db.Decimal(14, 2)
+
+  // THAVANAI specific fields:
+  totalRepayment    Decimal                   @default(0) @db.Decimal(14, 2)
+  installmentAmount Decimal                   @default(0) @db.Decimal(14, 2)
+  installmentCount  Int                       @default(0)
+  frequency         LoanFrequency             @default(WEEKLY)
+  firstDueDate      DateTime?                 @db.Date
+
+  // VATTI & RUN VATTI specific fields:
+  interestRate                  Decimal?                   @db.Decimal(6, 3)
+  interestType                  InterestCalculationMethod? @default(FLAT_SIMPLE)
+  collectionDay                 Int?
+  maturityDate                  DateTime?                  @db.Date
+  principalRepaymentArrangement String?
+  unpaidInterestHandling        String?                    @default("PENDING_ACCUMULATION")
+
+  startDate         DateTime                  @db.Date
+  disbursementDate  DateTime?                 @db.Date
+  status            LoanStatus                @default(DRAFT)
   notes             String?
   terms             String?
   createdById       String?
   activatedAt       DateTime?
   closedAt          DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
 
-  customer      Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  createdBy     Admin?        @relation("LoanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  installments  Installment[]
-  payments      Payment[]
+  customer        Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy       Admin?           @relation("LoanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  installments    Installment[]
+  interestPeriods InterestPeriod[]
+  payments        Payment[]
 
   @@index([customerId, status])
+  @@index([category, status])
   @@index([status])
   @@index([status, firstDueDate])
+  @@index([status, startDate])
 }
 
 model Installment {
@@ -130,7 +156,7 @@ model Installment {
   paidAmount      Decimal           @default(0) @db.Decimal(14, 2)
   status          InstallmentStatus @default(UPCOMING)
 
-  loan      Loan                @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  loan        Loan                @relation(fields: [loanId], references: [id], onDelete: Cascade)
   allocations PaymentAllocation[]
 
   @@unique([loanId, sequence])
@@ -138,28 +164,60 @@ model Installment {
   @@index([status, dueDate])
 }
 
-model Payment {
-  id             String        @id @default(cuid())
-  seq            Int           @unique @default(autoincrement())
-  receiptNumber  String        @unique
-  loanId         String
-  customerId     String
-  amount         Decimal       @db.Decimal(14, 2)
-  paidAt         DateTime
-  mode           PaymentMode   @default(CASH)
-  status         PaymentStatus @default(POSTED)
-  notes          String?
-  idempotencyKey String?       @unique
-  createdById    String?
-  createdAt      DateTime      @default(now())
-  voidedAt       DateTime?
-  voidReason     String?
+model InterestPeriod {
+  id              String            @id @default(cuid())
+  loanId          String
+  sequence        Int
+  fromDate        DateTime          @db.Date
+  dueDate         DateTime          @db.Date
+  principalBase   Decimal           @db.Decimal(14, 2)
+  interestRate    Decimal           @db.Decimal(6, 3)
+  scheduledAmount Decimal           @db.Decimal(14, 2)
+  paidAmount      Decimal           @default(0) @db.Decimal(14, 2)
+  status          InstallmentStatus @default(UPCOMING)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
-  loan        Loan                @relation(fields: [loanId], references: [id], onDelete: Restrict)
-  customer    Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  createdBy   Admin?              @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  allocations PaymentAllocation[]
-  reversal    PaymentReversal?
+  loan        Loan                 @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  allocations InterestAllocation[]
+
+  @@unique([loanId, sequence])
+  @@index([loanId, dueDate])
+  @@index([status, dueDate])
+}
+
+model Payment {
+  id                String               @id @default(cuid())
+  seq               Int                  @unique @default(autoincrement())
+  receiptNumber     String               @unique
+  loanId            String
+  customerId        String
+  amount            Decimal              @db.Decimal(14, 2)
+
+  // Payment breakdown & balance snapshots
+  principalAmount   Decimal              @default(0) @db.Decimal(14, 2)
+  interestAmount    Decimal              @default(0) @db.Decimal(14, 2)
+  previousPrincipal Decimal?             @db.Decimal(14, 2)
+  newPrincipal      Decimal?             @db.Decimal(14, 2)
+  previousInterest  Decimal?             @db.Decimal(14, 2)
+  newInterest       Decimal?             @db.Decimal(14, 2)
+
+  paidAt            DateTime
+  mode              PaymentMode          @default(CASH)
+  status            PaymentStatus        @default(POSTED)
+  notes             String?
+  idempotencyKey    String?              @unique
+  createdById       String?
+  createdAt         DateTime             @default(now())
+  voidedAt          DateTime?
+  voidReason        String?
+
+  loan                Loan                 @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  customer            Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy           Admin?               @relation("PaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  allocations         PaymentAllocation[]
+  interestAllocations InterestAllocation[]
+  reversal            PaymentReversal?
 
   @@index([loanId, paidAt])
   @@index([customerId, paidAt])
@@ -178,6 +236,20 @@ model PaymentAllocation {
 
   @@unique([paymentId, installmentId])
   @@index([installmentId])
+}
+
+model InterestAllocation {
+  id               String         @id @default(cuid())
+  paymentId        String
+  interestPeriodId String
+  amount           Decimal        @db.Decimal(14, 2)
+  createdAt        DateTime       @default(now())
+
+  payment        Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  interestPeriod InterestPeriod @relation(fields: [interestPeriodId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentId, interestPeriodId])
+  @@index([interestPeriodId])
 }
 
 model PaymentReversal {

@@ -3,6 +3,8 @@ import { cn } from "@/lib/utils";
 import {
   INSTALLMENT_STATUS_LABELS,
   INSTALLMENT_STATUS_TONES,
+  LOAN_CATEGORY_LABELS,
+  LOAN_CATEGORY_TONES,
   LOAN_STATUS_LABELS,
   LOAN_STATUS_TONES,
 } from "@/lib/constants";
@@ -34,6 +36,14 @@ export function PaymentStatusBadge({ status }: { status: string }) {
   return (
     <Badge variant="secondary" className="border-0 bg-emerald-100 font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
       Posted
+    </Badge>
+  );
+}
+
+export function LoanCategoryBadge({ category, className }: { category: string; className?: string }) {
+  return (
+    <Badge variant="outline" className={cn("font-medium", LOAN_CATEGORY_TONES[category], className)}>
+      {LOAN_CATEGORY_LABELS[category] ?? category}
     </Badge>
   );
 }

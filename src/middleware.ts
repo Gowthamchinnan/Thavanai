@@ -11,9 +11,6 @@ export function middleware(request: NextRequest) {
   const authenticated = hasSessionCookie(request);
 
   if (pathname === "/login") {
-    if (authenticated) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
-    }
     return NextResponse.next();
   }
 

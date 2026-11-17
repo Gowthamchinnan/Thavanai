@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/theme-provider";
+import { APP_NAME } from "@/lib/constants";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,8 +17,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Thavanai Manager",
-    template: "%s · Thavanai Manager",
+    default: APP_NAME,
+    template: `%s · ${APP_NAME}`,
   },
   description: "Private loan and installment collection management for a single lender. Manual cash collections, schedules, statements and reports.",
   robots: { index: false, follow: false },

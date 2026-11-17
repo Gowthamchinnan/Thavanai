@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function CollectionsTodayPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; frequency?: string; from?: string; to?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; frequency?: string; from?: string; to?: string; page?: string }>;
 }) {
   return <CollectionsView scope="today" searchParams={await searchParams} />;
 }

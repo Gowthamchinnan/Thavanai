@@ -1,10 +1,34 @@
-export const APP_NAME = "Thavanai Manager";
+export const APP_NAME = "Siva Thul Finance";
 export const PAGE_SIZE = 20;
 
+export const LOAN_CATEGORIES = ["THAVANAI", "MONTHLY_VATTI", "WEEKLY_RUN_VATI"] as const;
 export const LOAN_FREQUENCIES = ["DAILY", "WEEKLY", "MONTHLY"] as const;
 export const LOAN_STATUSES = ["DRAFT", "ACTIVE", "COMPLETED", "CANCELLED", "WRITTEN_OFF"] as const;
 export const PAYMENT_MODES = ["CASH", "BANK_TRANSFER", "UPI", "OTHER"] as const;
 export const INSTALLMENT_STATUSES = ["UPCOMING", "DUE_TODAY", "PARTIALLY_PAID", "PAID", "OVERDUE"] as const;
+
+export const LOAN_CATEGORY_LABELS: Record<string, string> = {
+  THAVANAI: "Thavanai",
+  MONTHLY_VATTI: "Vatti",
+  WEEKLY_RUN_VATI: "Run Vati",
+};
+
+export const LOAN_CATEGORY_DESCRIPTIONS: Record<string, string> = {
+  THAVANAI: "Installment-based fixed repayment loan (daily, weekly, or monthly installments).",
+  MONTHLY_VATTI: "Monthly interest-based loan with flexible interest & principal repayments.",
+  WEEKLY_RUN_VATI: "Weekly interest-based loan with flexible interest & principal repayments.",
+};
+
+export const LOAN_CATEGORY_TONES: Record<string, string> = {
+  THAVANAI: "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300 border-teal-200 dark:border-teal-800",
+  MONTHLY_VATTI: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+  WEEKLY_RUN_VATI: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+};
+
+export const INTEREST_CALCULATION_METHOD_LABELS: Record<string, string> = {
+  FLAT_SIMPLE: "Flat interest (on original principal)",
+  REDUCING_BALANCE: "Reducing balance (on outstanding principal)",
+};
 
 export const FREQUENCY_LABELS: Record<string, string> = {
   DAILY: "Daily",
@@ -52,13 +76,14 @@ export const INSTALLMENT_STATUS_TONES: Record<string, string> = {
 };
 
 export const REPORT_TYPE_OPTIONS = [
-  { value: "customers", label: "Customer list", description: "Every customer with active loans and outstanding balance." },
-  { value: "active-loans", label: "Active loan report", description: "Active loans with disbursement, repayment and collection totals." },
-  { value: "collections", label: "Collection report", description: "Payments received in a date range, with a daily summary." },
-  { value: "outstanding", label: "Outstanding loan report", description: "Active loans ranked by remaining contractual balance." },
-  { value: "overdue", label: "Overdue installments", description: "Every overdue installment with days past due." },
-  { value: "ledger", label: "Loan ledger report", description: "Loan summary plus posted payment ledger." },
-  { value: "margin", label: "Expected margin vs cash collected", description: "Expected gross margin beside actual cash collections." },
+  { value: "full-workbook", label: "Complete 6-Sheet Workbook", description: "Comprehensive Excel workbook with Overall Summary, Thavanai, Vatti, Run Vati, Collections, and Balances." },
+  { value: "thavanai", label: "Thavanai report", description: "All installment loans with repayment schedules, margins, and collection status." },
+  { value: "monthly-vatti", label: "Vatti report", description: "Monthly interest loans with principal, rate, accrued & collected interest, and pending interest." },
+  { value: "run-vati", label: "Run Vati report", description: "Weekly interest loans with principal, weekly rate, accrued & collected interest, and pending interest." },
+  { value: "collections", label: "Collection report", description: "Payments received across all categories with breakdowns and daily summaries." },
+  { value: "ledger", label: "Combined customer ledger", description: "Chronological transaction ledger across all 3 loan categories." },
+  { value: "outstanding", label: "Outstanding balances", description: "Customer-wise exposure across Thavanai, Vatti, and Run Vati." },
+  { value: "customers", label: "Customer directory", description: "All registered customers with contact information and portfolio summary." },
 ] as const;
 
 export const NAV_ITEMS = [

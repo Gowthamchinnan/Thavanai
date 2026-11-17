@@ -122,7 +122,7 @@ export default async function SettingsPage() {
             {logs.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">No audit entries yet.</p>
             ) : (
-              <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-130 space-y-2 overflow-y-auto pr-1">
                 {logs.map((log) => (
                   <div key={log.id} className="rounded-lg border border-border p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">

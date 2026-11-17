@@ -4,6 +4,7 @@ import { buildSchedule } from "../src/lib/schedule";
 import { computeInstallmentStatus } from "../src/lib/installments";
 import { getIndiaTodayISO, isoToUtcMidnight } from "../src/lib/dates";
 import { hashPassword } from "../src/lib/password";
+import { APP_NAME } from "../src/lib/constants";
 
 async function main() {
   await prisma.appSettings.upsert({
@@ -11,7 +12,7 @@ async function main() {
     update: {},
     create: {
       id: "singleton",
-      businessName: process.env.BUSINESS_NAME?.trim() || "Thavanai Manager",
+      businessName: process.env.BUSINESS_NAME?.trim() || APP_NAME,
       currency: "INR",
       timezone: "Asia/Kolkata",
       receiptHeader: "Thank you for your payment.",

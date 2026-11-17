@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function NewLoanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ customerId?: string }>;
+  searchParams: Promise<{ customerId?: string; category?: string }>;
 }) {
   const sp = await searchParams;
   const customers = await prisma.customer.findMany({
@@ -24,6 +24,10 @@ export default async function NewLoanPage({
   });
   const today = getIndiaTodayISO();
   const preselected = sp.customerId && customers.some((c) => c.id === sp.customerId) ? sp.customerId : undefined;
+  const initialCategory =
+    sp.category === "MONTHLY_VATTI" || sp.category === "WEEKLY_RUN_VATI" || sp.category === "THAVANAI"
+      ? sp.category
+      : "THAVANAI";
 
   return (
     <div>
@@ -48,7 +52,12 @@ export default async function NewLoanPage({
           actionLabel="Add customer"
         />
       ) : (
-        <LoanForm customers={customers} today={today} initialCustomerId={preselected} />
+        <LoanForm
+          customers={customers}
+          today={today}
+          initialCustomerId={preselected}
+          initialCategory={initialCategory}
+        />
       )}
     </div>
   );

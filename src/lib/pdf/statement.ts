@@ -14,13 +14,16 @@ import {
   FREQUENCY_LABELS,
   INSTALLMENT_STATUS_LABELS,
   LOAN_STATUS_LABELS,
+  LOAN_CATEGORY_LABELS,
   PAYMENT_MODE_LABELS,
+  INTEREST_CALCULATION_METHOD_LABELS,
 } from "@/lib/constants";
 
 export interface StatementPdfData {
   customer: { fullName: string; mobile: string; code: string; address: string | null; alternateMobile: string | null };
   loan: {
     reference: string;
+    category: string;
     status: string;
     frequency: string;
     nominalAmount: string;
@@ -29,8 +32,12 @@ export interface StatementPdfData {
     totalRepayment: string;
     installmentAmount: string;
     installmentCount: number;
+    interestRate?: string | null;
+    interestType?: string | null;
+    collectionDay?: number | null;
+    maturityDate?: string | null;
     startDate: string;
-    firstDueDate: string;
+    firstDueDate?: string | null;
     disbursementDate: string | null;
     notes: string | null;
     terms: string | null;
@@ -43,10 +50,21 @@ export interface StatementPdfData {
     paidAmount: string;
     status: string;
   }[];
+  interestPeriods?: {
+    sequence: number;
+    dueDate: string;
+    principalBase: string;
+    interestRate: string;
+    scheduledAmount: string;
+    paidAmount: string;
+    status: string;
+  }[];
   payments: {
     receiptNumber: string;
     paidAt: Date;
     amount: string;
+    principalAmount?: string;
+    interestAmount?: string;
     mode: string;
     status: string;
     notes: string | null;
@@ -55,6 +73,11 @@ export interface StatementPdfData {
   stats: {
     collected: string;
     outstanding: string;
+    principalPaid?: string;
+    interestPaid?: string;
+    outstandingPrincipal?: string;
+    interestAccrued?: string;
+    interestPending?: string;
     expectedGrossMargin: string;
     overdueAmount: string;
     overdueCount: number;
@@ -69,6 +92,7 @@ export async function buildStatementPdf(data: StatementPdfData, settings: AppSet
     const left = doc.page.margins.left;
     const width = contentWidth(doc);
     const bottomLimit = () => doc.page.height - doc.page.margins.bottom - 40;
+    const category = data.loan.category || "THAVANAI";
     let y = 44;
 
     doc.font("Heading").fontSize(18).fillColor(PDF_COLORS.teal).text(settings.businessName, left, y, {
@@ -76,10 +100,12 @@ export async function buildStatementPdf(data: StatementPdfData, settings: AppSet
       lineBreak: false,
       ellipsis: true,
     });
-    doc.font("Body").fontSize(8.5).fillColor(PDF_COLORS.muted).text("Loan and installment collection", left, y + 24, {
-      width: width * 0.62,
-      lineBreak: false,
-    });
+    doc.font("Body").fontSize(8.5).fillColor(PDF_COLORS.muted).text(
+      `${LOAN_CATEGORY_LABELS[category] ?? category} · Loan Statement`,
+      left,
+      y + 24,
+      { width: width * 0.62, lineBreak: false },
+    );
 
     doc.font("Heading").fontSize(13).fillColor(PDF_COLORS.ink).text("LOAN STATEMENT", left, y, {
       width,
@@ -123,7 +149,7 @@ export async function buildStatementPdf(data: StatementPdfData, settings: AppSet
       });
     }
 
-    doc.font("Body").fontSize(7.5).fillColor(PDF_COLORS.muted).text("LOAN", left + halfWidth + 28, y + 10, { lineBreak: false });
+    doc.font("Body").fontSize(7.5).fillColor(PDF_COLORS.muted).text("LOAN ACCOUNT", left + halfWidth + 28, y + 10, { lineBreak: false });
     doc
       .font("Heading")
       .fontSize(10.5)
@@ -133,48 +159,86 @@ export async function buildStatementPdf(data: StatementPdfData, settings: AppSet
         lineBreak: false,
         ellipsis: true,
       });
-    doc
-      .font("Body")
-      .fontSize(8.5)
-      .fillColor(PDF_COLORS.muted)
-      .text(
-        `${FREQUENCY_LABELS[data.loan.frequency] ?? data.loan.frequency} · ${data.loan.installmentCount} installments of ${formatINR(data.loan.installmentAmount)}`,
+
+    if (category === "THAVANAI") {
+      doc
+        .font("Body")
+        .fontSize(8.5)
+        .fillColor(PDF_COLORS.muted)
+        .text(
+          `${FREQUENCY_LABELS[data.loan.frequency] ?? data.loan.frequency} · ${data.loan.installmentCount} installments of ${formatINR(data.loan.installmentAmount)}`,
+          left + halfWidth + 28,
+          y + 38,
+          { width: halfWidth - 24, lineBreak: false, ellipsis: true },
+        );
+      doc.text(
+        `Started ${formatDateISO(data.loan.startDate)}${data.loan.firstDueDate ? ` · First due ${formatDateISO(data.loan.firstDueDate)}` : ""}`,
         left + halfWidth + 28,
-        y + 38,
+        y + 52,
         { width: halfWidth - 24, lineBreak: false, ellipsis: true },
       );
-    doc.text(
-      `Started ${formatDateISO(data.loan.startDate)} · First due ${formatDateISO(data.loan.firstDueDate)}`,
-      left + halfWidth + 28,
-      y + 52,
-      { width: halfWidth - 24, lineBreak: false, ellipsis: true },
-    );
+    } else {
+      doc
+        .font("Body")
+        .fontSize(8.5)
+        .fillColor(PDF_COLORS.muted)
+        .text(
+          `${LOAN_CATEGORY_LABELS[category] ?? category} · Rate: ${data.loan.interestRate ?? "—"}% · ${INTEREST_CALCULATION_METHOD_LABELS[data.loan.interestType ?? "FLAT_SIMPLE"] ?? ""}`,
+          left + halfWidth + 28,
+          y + 38,
+          { width: halfWidth - 24, lineBreak: false, ellipsis: true },
+        );
+      doc.text(
+        `Started ${formatDateISO(data.loan.startDate)}${data.loan.maturityDate ? ` · Maturity ${formatDateISO(data.loan.maturityDate)}` : ""}`,
+        left + halfWidth + 28,
+        y + 52,
+        { width: halfWidth - 24, lineBreak: false, ellipsis: true },
+      );
+    }
 
     y += 94;
 
-    doc.font("Heading").fontSize(10.5).fillColor(PDF_COLORS.ink).text("Loan terms", left, y);
+    doc.font("Heading").fontSize(10.5).fillColor(PDF_COLORS.ink).text("Loan terms & position", left, y);
     y += 18;
-    y = drawKeyValueGrid(
-      doc,
-      [
-        { label: "Nominal loan amount", value: formatINR(data.loan.nominalAmount) },
-        { label: "Upfront deduction", value: formatINR(data.loan.deductionAmount) },
-        { label: "Net cash disbursed", value: formatINR(data.loan.netDisbursed) },
-        { label: "Contractual total repayment", value: formatINR(data.loan.totalRepayment) },
-        { label: "Installment amount", value: formatINR(data.loan.installmentAmount) },
-        { label: "Number of installments", value: String(data.loan.installmentCount) },
-        { label: "Frequency", value: FREQUENCY_LABELS[data.loan.frequency] ?? data.loan.frequency },
-        { label: "Disbursement date", value: data.loan.disbursementDate ? formatDateISO(data.loan.disbursementDate) : "—" },
-        { label: "Expected gross margin", value: formatINR(data.stats.expectedGrossMargin), emphasize: true },
-        { label: "Total collected", value: formatINR(data.stats.collected), emphasize: true },
-        { label: "Remaining balance", value: formatINR(data.stats.outstanding), emphasize: true },
-        {
-          label: "Overdue",
-          value: `${formatINR(data.stats.overdueAmount)} across ${data.stats.overdueCount} installment(s)`,
-        },
-      ],
-      { y },
-    );
+
+    const termsGrid =
+      category === "THAVANAI"
+        ? [
+            { label: "Nominal loan amount", value: formatINR(data.loan.nominalAmount) },
+            { label: "Upfront deduction", value: formatINR(data.loan.deductionAmount) },
+            { label: "Net cash disbursed", value: formatINR(data.loan.netDisbursed) },
+            { label: "Contractual total repayment", value: formatINR(data.loan.totalRepayment) },
+            { label: "Installment amount", value: formatINR(data.loan.installmentAmount) },
+            { label: "Number of installments", value: String(data.loan.installmentCount) },
+            { label: "Frequency", value: FREQUENCY_LABELS[data.loan.frequency] ?? data.loan.frequency },
+            { label: "Disbursement date", value: data.loan.disbursementDate ? formatDateISO(data.loan.disbursementDate) : "—" },
+            { label: "Expected gross margin", value: formatINR(data.stats.expectedGrossMargin), emphasize: true },
+            { label: "Total collected", value: formatINR(data.stats.collected), emphasize: true },
+            { label: "Remaining balance", value: formatINR(data.stats.outstanding), emphasize: true },
+            {
+              label: "Overdue",
+              value: `${formatINR(data.stats.overdueAmount)} across ${data.stats.overdueCount} installment(s)`,
+            },
+          ]
+        : [
+            { label: "Principal amount", value: formatINR(data.loan.nominalAmount) },
+            { label: "Interest percentage", value: `${data.loan.interestRate ?? "0"}% (${category === "MONTHLY_VATTI" ? "Monthly" : "Weekly"})` },
+            { label: "Calculation method", value: INTEREST_CALCULATION_METHOD_LABELS[data.loan.interestType ?? "FLAT_SIMPLE"] ?? data.loan.interestType ?? "Flat Simple" },
+            { label: "Net cash disbursed", value: formatINR(data.loan.netDisbursed) },
+            { label: "Principal repaid to date", value: formatINR(data.stats.principalPaid ?? "0.00") },
+            { label: "Outstanding principal", value: formatINR(data.stats.outstandingPrincipal ?? data.stats.outstanding), emphasize: true },
+            { label: "Accrued interest to date", value: formatINR(data.stats.interestAccrued ?? "0.00") },
+            { label: "Interest collected to date", value: formatINR(data.stats.interestPaid ?? "0.00") },
+            { label: "Pending unpaid interest", value: formatINR(data.stats.interestPending ?? "0.00"), emphasize: true },
+            { label: "Total collected", value: formatINR(data.stats.collected), emphasize: true },
+            { label: "Total outstanding balance", value: formatINR(data.stats.outstanding), emphasize: true },
+            {
+              label: "Overdue interest",
+              value: `${formatINR(data.stats.overdueAmount)} across ${data.stats.overdueCount} period(s)`,
+            },
+          ];
+
+    y = drawKeyValueGrid(doc, termsGrid, { y });
 
     y += 4;
     if (data.loan.terms) {
@@ -199,81 +263,123 @@ export async function buildStatementPdf(data: StatementPdfData, settings: AppSet
     };
 
     ensureSpace(70);
-    doc.font("Heading").fontSize(10.5).fillColor(PDF_COLORS.ink).text("Installment schedule", left, y);
-    y += 18;
-    y = drawTable(doc, {
-      y,
-      columns: [
-        { header: "#", width: 28, align: "center" },
-        { header: "Due date", width: 90 },
-        { header: "Scheduled", width: 92, align: "right" },
-        { header: "Paid", width: 92, align: "right" },
-        { header: "Outstanding", width: 92, align: "right" },
-        { header: "Status", width: 92 },
-      ],
-      rows: data.installments.map((installment) => [
-        String(installment.sequence),
-        formatDateISO(installment.dueDate),
-        formatINR(installment.scheduledAmount),
-        formatINR(installment.paidAmount),
-        formatINR(
-          Math.max(0, Number(installment.scheduledAmount) - Number(installment.paidAmount)).toFixed(2).toString(),
-        ),
-        INSTALLMENT_STATUS_LABELS[installment.status] ?? installment.status,
-      ]),
-      emptyText: "No installments have been generated for this loan.",
-      maxFirstRows: 1000,
-    });
+
+    // Schedule table: Installments for Thavanai, InterestPeriods for Vatti
+    if (category === "THAVANAI") {
+      doc.font("Heading").fontSize(10.5).fillColor(PDF_COLORS.ink).text("Installment schedule", left, y);
+      y += 18;
+      y = drawTable(doc, {
+        y,
+        columns: [
+          { header: "#", width: 28, align: "center" },
+          { header: "Due date", width: 90 },
+          { header: "Scheduled", width: 92, align: "right" },
+          { header: "Paid", width: 92, align: "right" },
+          { header: "Outstanding", width: 92, align: "right" },
+          { header: "Status", width: 92 },
+        ],
+        rows: data.installments.map((inst) => [
+          String(inst.sequence),
+          formatDateISO(inst.dueDate),
+          formatINR(inst.scheduledAmount),
+          formatINR(inst.paidAmount),
+          formatINR(Math.max(0, Number(inst.scheduledAmount) - Number(inst.paidAmount)).toFixed(2).toString()),
+          INSTALLMENT_STATUS_LABELS[inst.status] ?? inst.status,
+        ]),
+        emptyText: "No installments have been generated for this loan.",
+        maxFirstRows: 1000,
+      });
+    } else {
+      doc.font("Heading").fontSize(10.5).fillColor(PDF_COLORS.ink).text(
+        category === "MONTHLY_VATTI" ? "Monthly interest schedule" : "Weekly interest schedule",
+        left,
+        y,
+      );
+      y += 18;
+      const periods = data.interestPeriods || [];
+      y = drawTable(doc, {
+        y,
+        columns: [
+          { header: "#", width: 28, align: "center" },
+          { header: "Due date", width: 85 },
+          { header: "Principal base", width: 85, align: "right" },
+          { header: "Rate", width: 55, align: "right" },
+          { header: "Interest due", width: 75, align: "right" },
+          { header: "Paid", width: 75, align: "right" },
+          { header: "Pending", width: 75, align: "right" },
+          { header: "Status", width: 68 },
+        ],
+        rows: periods.map((p) => [
+          String(p.sequence),
+          formatDateISO(p.dueDate),
+          formatINR(p.principalBase),
+          `${p.interestRate}%`,
+          formatINR(p.scheduledAmount),
+          formatINR(p.paidAmount),
+          formatINR(Math.max(0, Number(p.scheduledAmount) - Number(p.paidAmount)).toFixed(2).toString()),
+          INSTALLMENT_STATUS_LABELS[p.status] ?? p.status,
+        ]),
+        emptyText: "No interest periods recorded.",
+        maxFirstRows: 1000,
+      });
+    }
 
     y += 16;
     ensureSpace(70);
     doc.font("Heading").fontSize(10.5).fillColor(PDF_COLORS.ink).text("Payment history", left, y);
     y += 18;
-    y = drawTable(doc, {
-      y,
-      columns: [
-        { header: "Receipt", width: 116 },
-        { header: "Payment date", width: 108 },
-        { header: "Amount", width: 86, align: "right" },
-        { header: "Mode", width: 90 },
-        { header: "Status", width: 78 },
-      ],
-      rows: data.payments.map((payment) => [
-        payment.receiptNumber,
-        formatDateTimeIndia(payment.paidAt),
-        formatINR(payment.amount),
-        PAYMENT_MODE_LABELS[payment.mode] ?? payment.mode,
-        payment.status === "VOIDED" ? "Voided" : "Posted",
-      ]),
-      emptyText: "No payments have been recorded for this loan.",
-      maxFirstRows: 1000,
-    });
+
+    if (category === "THAVANAI") {
+      y = drawTable(doc, {
+        y,
+        columns: [
+          { header: "Receipt", width: 116 },
+          { header: "Payment date", width: 108 },
+          { header: "Amount", width: 86, align: "right" },
+          { header: "Mode", width: 90 },
+          { header: "Status", width: 78 },
+        ],
+        rows: data.payments.map((payment) => [
+          payment.receiptNumber,
+          formatDateTimeIndia(payment.paidAt),
+          formatINR(payment.amount),
+          PAYMENT_MODE_LABELS[payment.mode] ?? payment.mode,
+          payment.status === "VOIDED" ? "Voided" : "Posted",
+        ]),
+        emptyText: "No payments have been recorded for this loan.",
+        maxFirstRows: 1000,
+      });
+    } else {
+      y = drawTable(doc, {
+        y,
+        columns: [
+          { header: "Receipt", width: 100 },
+          { header: "Payment date", width: 100 },
+          { header: "Principal paid", width: 75, align: "right" },
+          { header: "Interest paid", width: 75, align: "right" },
+          { header: "Total received", width: 75, align: "right" },
+          { header: "Mode", width: 75 },
+          { header: "Status", width: 65 },
+        ],
+        rows: data.payments.map((payment) => [
+          payment.receiptNumber,
+          formatDateTimeIndia(payment.paidAt),
+          formatINR(payment.principalAmount ?? "0"),
+          formatINR(payment.interestAmount ?? "0"),
+          formatINR(payment.amount),
+          PAYMENT_MODE_LABELS[payment.mode] ?? payment.mode,
+          payment.status === "VOIDED" ? "Voided" : "Posted",
+        ]),
+        emptyText: "No payments have been recorded for this loan.",
+        maxFirstRows: 1000,
+      });
+    }
 
     y += 22;
-    ensureSpace(120);
-    doc.font("Heading").fontSize(10.5).fillColor(PDF_COLORS.ink).text("Current position", left, y);
-    y += 18;
-    y = drawKeyValueGrid(
-      doc,
-      [
-        { label: "Total repayments received", value: formatINR(data.stats.collected) },
-        { label: "Remaining contractual balance", value: formatINR(data.stats.outstanding) },
-        {
-          label: "Next outstanding installment",
-          value:
-            data.stats.nextDueAmount && data.stats.nextDueDate
-              ? `#${data.stats.nextDueSequence ?? ""} · ${formatINR(data.stats.nextDueAmount)} due ${formatDateISO(data.stats.nextDueDate)}`
-              : "Fully repaid",
-        },
-        { label: "Expected gross margin", value: formatINR(data.stats.expectedGrossMargin) },
-      ],
-      { y },
-    );
-
-    y += 12;
+    ensureSpace(100);
     const disclaimer =
       settings.receiptFooter ||
-      "This statement is generated from manually recorded collections. It is not a demand notice or an automatic payment request.";
+      "This statement is generated from manually recorded collections. It is not an automatic debit or demand notice.";
     doc.save().roundedRect(left, y, width, 58, 6).fill(PDF_COLORS.slateSoft).restore();
     doc.font("Body").fontSize(8).fillColor(PDF_COLORS.muted).text("IMPORTANT", left + 12, y + 9, { lineBreak: false });
     doc.font("Body").fontSize(8.2).fillColor(PDF_COLORS.ink).text(disclaimer, left + 12, y + 22, {

@@ -135,7 +135,7 @@ export function AppNav({
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">{businessName}</p>
-            <p className="text-[11px] text-sidebar-muted">Thavanai Manager</p>
+            <p className="text-[11px] text-sidebar-muted">Loan &amp; collection management</p>
           </div>
         </div>
         <SidebarLinks />
@@ -244,7 +244,7 @@ export function AppNav({
               </div>
               <div>
                 <p className="text-sm font-semibold">{businessName}</p>
-                <p className="text-[11px] text-muted-foreground">Thavanai Manager</p>
+                <p className="text-[11px] text-muted-foreground">Loan &amp; collection management</p>
               </div>
             </div>
             <Button variant="ghost" size="icon" onClick={() => setMenuOpen(false)} aria-label="Close navigation">

@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
+import { CustomerCreateDialog } from "@/components/forms/customer-create-dialog";
 
 export const metadata: Metadata = { title: "Customers" };
 export const dynamic = "force-dynamic";
@@ -34,11 +35,14 @@ export default async function CustomersPage({
         title="Customers"
         description="Search customer records, review linked loans and open a customer ledger."
         actions={
-          <Button asChild size="sm">
-            <Link href="/customers/new">
-              <UserPlus className="h-4 w-4" /> Add customer
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <CustomerCreateDialog />
+            <Button asChild variant="outline" size="sm">
+              <Link href="/customers/new">
+                <UserPlus className="h-4 w-4" /> Full page
+              </Link>
+            </Button>
+          </div>
         }
       />
 

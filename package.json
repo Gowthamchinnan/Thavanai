@@ -1,5 +1,5 @@
 {
-  "name": "thavanai-manager",
+  "name": "siva-thul-finance",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@neondatabase/serverless": "^1.2.1",
     "@node-rs/argon2": "^2.2.2",
     "@prisma/client": "^6.19.3",
     "@radix-ui/react-alert-dialog": "^1.1.15",

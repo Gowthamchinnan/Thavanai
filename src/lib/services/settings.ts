@@ -5,6 +5,7 @@ import type { profileSchema, settingsSchema } from "@/lib/validation";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { writeAudit } from "@/lib/audit";
 import { ServiceError } from "@/lib/services/loans";
+import { APP_NAME } from "@/lib/constants";
 
 export async function getSettings(): Promise<AppSettings> {
   return prisma.appSettings.upsert({
@@ -12,7 +13,7 @@ export async function getSettings(): Promise<AppSettings> {
     update: {},
     create: {
       id: "singleton",
-      businessName: "Thavanai Manager",
+      businessName: APP_NAME,
       currency: "INR",
       timezone: "Asia/Kolkata",
       receiptHeader: "Thank you for your payment.",

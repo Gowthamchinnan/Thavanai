@@ -16,7 +16,7 @@ import { Card } from "@/components/ui/card";
 import { Input, SelectNative } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
-import { InstallmentStatusBadge } from "@/components/shared/status-badge";
+import { InstallmentStatusBadge, LoanCategoryBadge } from "@/components/shared/status-badge";
 import { cn } from "@/lib/utils";
 
 const SCOPES: { key: CollectionScope; label: string; href: string; icon: typeof CalendarDays }[] = [
@@ -28,18 +28,18 @@ const SCOPES: { key: CollectionScope; label: string; href: string; icon: typeof 
 const META: Record<Exclude<CollectionScope, "all">, { title: string; description: string; empty: string }> = {
   today: {
     title: "Due today",
-    description: "Installments whose India due date is today. Record each manual collection as it is received.",
-    empty: "No installments are due today. Check upcoming collections for what is next.",
+    description: "Installments and interest cycles whose India due date is today. Record each manual collection as it is received.",
+    empty: "No installments or interest cycles are due today. Check upcoming collections for what is next.",
   },
   overdue: {
     title: "Overdue",
-    description: "Unpaid installments past their due date, oldest first. Follow up manually and record corrections honestly.",
-    empty: "No overdue installments right now.",
+    description: "Unpaid installments and interest cycles past their due date, oldest first. Follow up manually and record collections.",
+    empty: "No overdue installments or interest cycles right now.",
   },
   upcoming: {
     title: "Upcoming",
-    description: "Future installments across active loans, including partially paid ones.",
-    empty: "No upcoming installments. Create or activate a loan to build a schedule.",
+    description: "Future installments and interest cycles across active loans, including partially paid ones.",
+    empty: "No upcoming collections. Create or activate a loan to build a schedule.",
   },
 };
 
@@ -48,18 +48,25 @@ export async function CollectionsView({
   searchParams,
 }: {
   scope: Exclude<CollectionScope, "all">;
-  searchParams: { q?: string; frequency?: string; from?: string; to?: string; page?: string };
+  searchParams: { q?: string; category?: string; frequency?: string; from?: string; to?: string; page?: string };
 }) {
   const result = await listCollections({
     scope,
     q: searchParams.q,
+    category: searchParams.category ?? "ALL",
     frequency: searchParams.frequency ?? "ALL",
     from: searchParams.from,
     to: searchParams.to,
     page: Number(searchParams.page ?? 1) || 1,
   });
   const meta = META[scope];
-  const hasFilters = Boolean(searchParams.q || (searchParams.frequency && searchParams.frequency !== "ALL") || searchParams.from || searchParams.to);
+  const hasFilters = Boolean(
+    searchParams.q ||
+      (searchParams.category && searchParams.category !== "ALL") ||
+      (searchParams.frequency && searchParams.frequency !== "ALL") ||
+      searchParams.from ||
+      searchParams.to,
+  );
 
   return (
     <div>
@@ -98,16 +105,16 @@ export async function CollectionsView({
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Card className="p-4">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Installments</p>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Due items</p>
           <p className="num mt-1 text-xl font-semibold">{result.summary.count}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Scheduled</p>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Scheduled amount</p>
           <p className="num mt-1 text-lg font-semibold">{formatINR(result.summary.scheduledTotal)}</p>
         </Card>
         <Card className="p-4">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Still to collect</p>
-          <p className="num mt-1 text-lg font-semibold text-primary">{formatINR(result.summary.outstanding)}</p>
+          <p className="num mt-1 text-lg font-bold text-primary">{formatINR(result.summary.outstanding)}</p>
         </Card>
         <Card className="p-4">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">India date</p>
@@ -132,7 +139,18 @@ export async function CollectionsView({
               />
             </div>
           </div>
-          <div className="space-y-1.5 lg:w-40">
+          <div className="space-y-1.5 lg:w-44">
+            <label htmlFor="collection-category" className="text-xs font-medium text-muted-foreground">
+              Category
+            </label>
+            <SelectNative id="collection-category" name="category" defaultValue={searchParams.category ?? "ALL"}>
+              <option value="ALL">All categories</option>
+              <option value="THAVANAI">Thavanai (Installment)</option>
+              <option value="MONTHLY_VATTI">Vatti (Monthly)</option>
+              <option value="WEEKLY_RUN_VATI">Run Vati (Weekly)</option>
+            </SelectNative>
+          </div>
+          <div className="space-y-1.5 lg:w-36">
             <label htmlFor="collection-frequency" className="text-xs font-medium text-muted-foreground">
               Frequency
             </label>
@@ -143,13 +161,13 @@ export async function CollectionsView({
               <option value="MONTHLY">Monthly</option>
             </SelectNative>
           </div>
-          <div className="space-y-1.5 lg:w-40">
+          <div className="space-y-1.5 lg:w-36">
             <label htmlFor="collection-from" className="text-xs font-medium text-muted-foreground">
               Due from
             </label>
             <Input id="collection-from" name="from" type="date" defaultValue={searchParams.from ?? ""} />
           </div>
-          <div className="space-y-1.5 lg:w-40">
+          <div className="space-y-1.5 lg:w-36">
             <label htmlFor="collection-to" className="text-xs font-medium text-muted-foreground">
               Due to
             </label>
@@ -159,11 +177,11 @@ export async function CollectionsView({
             <Button type="submit" size="sm">
               <Search className="h-4 w-4" /> Filter
             </Button>
-            {hasFilters ? (
+            {hasFilters && (
               <Button asChild variant="ghost" size="sm">
                 <Link href={SCOPES.find((s) => s.key === scope)?.href ?? "/collections/today"}>Reset</Link>
               </Button>
-            ) : null}
+            )}
           </div>
         </form>
       </Card>
@@ -185,7 +203,8 @@ export async function CollectionsView({
                   <tr>
                     <th className="px-4 py-3 text-left">Customer</th>
                     <th className="px-4 py-3 text-left">Loan</th>
-                    <th className="px-4 py-3 text-left">Installment</th>
+                    <th className="px-4 py-3 text-left">Category</th>
+                    <th className="px-4 py-3 text-left">Cycle / Installment</th>
                     <th className="px-4 py-3 text-left">Due</th>
                     <th className="px-4 py-3 text-right">Scheduled</th>
                     <th className="px-4 py-3 text-right">Paid</th>
@@ -198,38 +217,41 @@ export async function CollectionsView({
                   {result.items.map((item) => (
                     <tr key={item.id} className={item.status === "OVERDUE" ? "bg-rose-50/40 dark:bg-rose-950/10" : undefined}>
                       <td className="px-4 py-3">
-                        <Link href={`/customers/${item.customer.id}`} className="font-medium hover:underline">
+                        <Link href={`/customers/${item.customer.id}`} className="font-semibold hover:underline">
                           {item.customer.fullName}
                         </Link>
                         <p className="num text-[11px] text-muted-foreground">{item.customer.mobile}</p>
                       </td>
                       <td className="px-4 py-3">
-                        <Link href={`/loans/${item.loan.id}`} className="text-xs font-medium hover:underline">
+                        <Link href={`/loans/${item.loan.id}`} className="text-xs font-semibold hover:underline">
                           {item.loan.reference}
                         </Link>
                         <p className="num text-[11px] text-muted-foreground">Balance {formatINR(item.loanBalance)}</p>
                       </td>
+                      <td className="px-4 py-3">
+                        <LoanCategoryBadge category={item.category} className="text-[10px]" />
+                      </td>
                       <td className="px-4 py-3 text-xs">
-                        #{item.sequence} of {item.loan.installmentCount}
+                        #{item.sequence} {item.loan.installmentCount > 0 ? `of ${item.loan.installmentCount}` : ""}
                       </td>
                       <td className="px-4 py-3 text-xs">
                         {formatDateISO(item.dueDate)}
-                        {item.overdueDays > 0 ? (
+                        {item.overdueDays > 0 && (
                           <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400">{item.overdueDays} day(s) late</p>
-                        ) : null}
+                        )}
                       </td>
                       <td className="num px-4 py-3 text-right">{formatINR(item.scheduledAmount)}</td>
-                      <td className="num px-4 py-3 text-right">{formatINR(item.paidAmount)}</td>
-                      <td className="num px-4 py-3 text-right font-semibold">{formatINR(item.outstandingAmount)}</td>
+                      <td className="num px-4 py-3 text-right text-emerald-700 dark:text-emerald-400 font-medium">{formatINR(item.paidAmount)}</td>
+                      <td className="num px-4 py-3 text-right font-bold text-primary">{formatINR(item.outstandingAmount)}</td>
                       <td className="px-4 py-3">
                         <InstallmentStatusBadge status={item.status} />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-2">
-                          <Button asChild variant="outline" size="sm">
+                          <Button asChild size="sm">
                             <Link href={`/loans/${item.loan.id}#record`}>Collect</Link>
                           </Button>
-                          <Button asChild variant="ghost" size="sm">
+                          <Button asChild variant="outline" size="sm">
                             <Link href={`/loans/${item.loan.id}`}>Open</Link>
                           </Button>
                         </div>
@@ -246,29 +268,30 @@ export async function CollectionsView({
               <Card key={item.id} className="p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <Link href={`/customers/${item.customer.id}`} className="font-medium hover:underline">
+                    <Link href={`/customers/${item.customer.id}`} className="font-semibold hover:underline">
                       {item.customer.fullName}
                     </Link>
                     <p className="num text-xs text-muted-foreground">{item.customer.mobile}</p>
                   </div>
                   <InstallmentStatusBadge status={item.status} />
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <Link href={`/loans/${item.loan.id}`} className="num font-medium text-foreground hover:underline">
+                <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <Link href={`/loans/${item.loan.id}`} className="num font-semibold text-foreground hover:underline">
                     {item.loan.reference}
                   </Link>
+                  <LoanCategoryBadge category={item.category} className="text-[10px]" />
                   <span>
-                    #{item.sequence} of {item.loan.installmentCount}
+                    #{item.sequence}
                   </span>
                   <span>Due {formatDateISO(item.dueDate)}</span>
-                  {item.overdueDays > 0 ? (
+                  {item.overdueDays > 0 && (
                     <span className="font-medium text-rose-600 dark:text-rose-400">{item.overdueDays} day(s) late</span>
-                  ) : null}
+                  )}
                 </div>
                 <div className="mt-3 flex items-end justify-between gap-2">
                   <div>
                     <p className="text-[10px] uppercase tracking-wide text-muted-foreground">To collect</p>
-                    <p className="num text-base font-semibold">{formatINR(item.outstandingAmount)}</p>
+                    <p className="num text-base font-bold text-primary">{formatINR(item.outstandingAmount)}</p>
                     <p className="num text-[10px] text-muted-foreground">
                       {formatINR(item.paidAmount)} paid of {formatINR(item.scheduledAmount)}
                     </p>
@@ -285,6 +308,7 @@ export async function CollectionsView({
             basePath={`/collections/${scope}`}
             params={{
               q: searchParams.q,
+              category: searchParams.category ?? "ALL",
               frequency: searchParams.frequency ?? "ALL",
               from: searchParams.from,
               to: searchParams.to,

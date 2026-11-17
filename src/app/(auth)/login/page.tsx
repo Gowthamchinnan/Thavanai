@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Wallet, ShieldCheck, ArrowLeftRight, FileText } from "lucide-react";
+import { auth } from "@/auth";
 import { LoginForm } from "@/components/forms/login-form";
+import { APP_NAME } from "@/lib/constants";
 
 export const metadata: Metadata = { title: "Administrator sign in" };
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const session = await auth();
+  if (session?.user?.id) {
+    redirect("/dashboard");
+  }
+
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-sidebar p-12 text-sidebar-foreground lg:flex lg:flex-col lg:justify-between">
@@ -16,7 +24,7 @@ export default function LoginPage() {
               <Wallet className="h-6 w-6" />
             </div>
             <div>
-              <p className="text-lg font-semibold text-white">Thavanai Manager</p>
+              <p className="text-lg font-semibold text-white">{APP_NAME}</p>
               <p className="text-xs text-sidebar-muted">Private collection administration</p>
             </div>
           </div>
@@ -55,7 +63,7 @@ export default function LoginPage() {
               <Wallet className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-base font-semibold">Thavanai Manager</p>
+              <p className="text-base font-semibold">{APP_NAME}</p>
               <p className="text-xs text-muted-foreground">Private collection administration</p>
             </div>
           </div>

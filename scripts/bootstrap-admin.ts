@@ -14,7 +14,7 @@ function validPassword(value: string): boolean {
 
 async function main() {
   const email = (process.env.ADMIN_EMAIL ?? "").trim().toLowerCase();
-  const name = (process.env.ADMIN_NAME ?? "Thavanai Admin").trim() || "Thavanai Admin";
+  const name = (process.env.ADMIN_NAME ?? "Siva Thul Admin").trim() || "Siva Thul Admin";
   const force = process.argv.includes("--force");
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {

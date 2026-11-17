@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { D, money, toNumberForChart } from "@/lib/money";
+import { D, money, sumMoney, toNumberForChart } from "@/lib/money";
 import {
   addDaysISO,
   getIndiaMonthRange,
@@ -9,12 +9,12 @@ import {
   isoToUtcMidnight,
   lastNDaysIndia,
 } from "@/lib/dates";
-import { collectedByLoan, outstandingFrom } from "@/lib/services/balances";
 import { syncInstallmentStatuses } from "@/lib/services/status-sync";
 
 export async function getDashboardData() {
   await syncInstallmentStatuses();
   const today = getIndiaTodayISO();
+  const todayDate = isoToUtcMidnight(today);
   const trendDays = lastNDaysIndia(14);
   const trendStart = indiaDayRangeUTC(trendDays[0]).start;
   const todayRange = indiaDayRangeUTC(today);
@@ -22,34 +22,32 @@ export async function getDashboardData() {
   const monthRange = getIndiaMonthRange();
   const upcomingEnd = isoToUtcMidnight(addDaysISO(today, 7));
 
+  // Fetch all active loans with their installments, interest periods, and customer
+  const activeLoans = await prisma.loan.findMany({
+    where: { status: "ACTIVE" },
+    include: {
+      customer: { select: { id: true, fullName: true, mobile: true, code: true } },
+      installments: true,
+      interestPeriods: true,
+      payments: {
+        where: { status: "POSTED" },
+        select: { id: true, amount: true, principalAmount: true, interestAmount: true, paidAt: true },
+      },
+    },
+  });
+
+  const totalUniqueCustomers = new Set(activeLoans.map((l) => l.customerId)).size;
+
+  // Payments aggregates
   const [
-    activeLoanCount,
-    activeCustomerGroups,
-    activeSums,
-    activeCollectedSum,
-    lifetimeCollectedSum,
-    todayCollected,
-    weekCollected,
-    monthCollected,
-    dueTodayAgg,
-    overdueAgg,
+    lifetimePaymentsAgg,
+    todayPaymentsAgg,
+    weekPaymentsAgg,
+    monthPaymentsAgg,
     statusGroups,
-    recentPayments,
-    trendPayments,
-    upcomingAgg,
-    dueTodayRows,
-    upcomingRows,
+    recentPaymentsRaw,
+    trendPaymentsRaw,
   ] = await Promise.all([
-    prisma.loan.count({ where: { status: "ACTIVE" } }),
-    prisma.loan.groupBy({ by: ["customerId"], where: { status: "ACTIVE" } }),
-    prisma.loan.aggregate({
-      where: { status: "ACTIVE" },
-      _sum: { totalRepayment: true, netDisbursed: true, nominalAmount: true },
-    }),
-    prisma.payment.aggregate({
-      where: { status: "POSTED", loan: { status: "ACTIVE" } },
-      _sum: { amount: true },
-    }),
     prisma.payment.aggregate({ where: { status: "POSTED" }, _sum: { amount: true } }),
     prisma.payment.aggregate({
       where: { status: "POSTED", paidAt: { gte: todayRange.start, lt: todayRange.end } },
@@ -63,16 +61,6 @@ export async function getDashboardData() {
       where: { status: "POSTED", paidAt: { gte: monthRange.start, lt: monthRange.end } },
       _sum: { amount: true },
     }),
-    prisma.installment.aggregate({
-      where: { status: "DUE_TODAY", loan: { status: "ACTIVE" } },
-      _sum: { scheduledAmount: true, paidAmount: true },
-      _count: { _all: true },
-    }),
-    prisma.installment.aggregate({
-      where: { status: "OVERDUE", loan: { status: "ACTIVE" } },
-      _sum: { scheduledAmount: true, paidAmount: true },
-      _count: { _all: true },
-    }),
     prisma.loan.groupBy({ by: ["status"], _count: { _all: true } }),
     prisma.payment.findMany({
       where: { status: "POSTED" },
@@ -80,71 +68,105 @@ export async function getDashboardData() {
       take: 8,
       include: {
         customer: { select: { id: true, fullName: true, mobile: true } },
-        loan: { select: { id: true, reference: true } },
+        loan: { select: { id: true, reference: true, category: true } },
       },
     }),
     prisma.payment.findMany({
       where: { status: "POSTED", paidAt: { gte: trendStart } },
       select: { amount: true, paidAt: true },
     }),
-    prisma.installment.aggregate({
-      where: {
-        loan: { status: "ACTIVE" },
-        dueDate: { gt: isoToUtcMidnight(today), lte: upcomingEnd },
-        status: { in: ["UPCOMING", "PARTIALLY_PAID", "DUE_TODAY"] },
-      },
-      _sum: { scheduledAmount: true, paidAmount: true },
-      _count: { _all: true },
-    }),
-    prisma.installment.findMany({
-      where: { status: "DUE_TODAY", loan: { status: "ACTIVE" } },
-      orderBy: [{ dueDate: "asc" }, { sequence: "asc" }],
-      take: 6,
-      include: {
-        loan: {
-          include: { customer: { select: { id: true, fullName: true, mobile: true } } },
-        },
-      },
-    }),
-    prisma.installment.findMany({
-      where: {
-        loan: { status: "ACTIVE" },
-        dueDate: { gt: isoToUtcMidnight(today), lte: upcomingEnd },
-        status: { in: ["UPCOMING", "PARTIALLY_PAID", "DUE_TODAY"] },
-      },
-      orderBy: [{ dueDate: "asc" }, { sequence: "asc" }],
-      take: 6,
-      include: {
-        loan: {
-          include: { customer: { select: { id: true, fullName: true, mobile: true } } },
-        },
-      },
-    }),
   ]);
 
-  const activeRepayment = money(activeSums._sum.totalRepayment ?? 0);
-  const activeDisbursed = money(activeSums._sum.netDisbursed ?? 0);
-  const activeNominal = money(activeSums._sum.nominalAmount ?? 0);
-  const activeCollected = money(activeCollectedSum._sum.amount ?? 0);
-  const lifetimeCollected = money(lifetimeCollectedSum._sum.amount ?? 0);
-  const expectedGrossMargin = money(D(activeRepayment).minus(D(activeDisbursed)));
+  // Separate loans by category
+  const thavanaiLoans = activeLoans.filter((l) => l.category === "THAVANAI");
+  const monthlyVattiLoans = activeLoans.filter((l) => l.category === "MONTHLY_VATTI");
+  const weeklyRunVatiLoans = activeLoans.filter((l) => l.category === "WEEKLY_RUN_VATI");
 
-  const upcomingLoanIds = Array.from(new Set([...dueTodayRows, ...upcomingRows].map((row) => row.loanId)));
-  const upcomingCollected = await collectedByLoan(upcomingLoanIds);
+  // --- THAVANAI METRICS ---
+  const thavanaiDisbursed = sumMoney(thavanaiLoans.map((l) => l.netDisbursed));
+  const thavanaiRepayment = sumMoney(thavanaiLoans.map((l) => l.totalRepayment));
+  const thavanaiCollected = sumMoney(thavanaiLoans.flatMap((l) => l.payments.map((p) => p.amount)));
+  const thavanaiRemaining = thavanaiRepayment.minus(thavanaiCollected).clamp(0, Infinity);
+  const thavanaiGrossMargin = thavanaiRepayment.minus(thavanaiDisbursed);
 
-  const dueTodayOutstanding = money(
-    D(dueTodayAgg._sum.scheduledAmount ?? 0).minus(D(dueTodayAgg._sum.paidAmount ?? 0)),
+  const thavanaiInstallments = thavanaiLoans.flatMap((l) => l.installments);
+  const thavanaiDueToday = thavanaiInstallments.filter((i) => i.status === "DUE_TODAY");
+  const thavanaiDueTodayAmount = sumMoney(thavanaiDueToday.map((i) => D(i.scheduledAmount).minus(D(i.paidAmount))));
+  const thavanaiOverdue = thavanaiInstallments.filter((i) => i.status === "OVERDUE");
+  const thavanaiOverdueAmount = sumMoney(thavanaiOverdue.map((i) => D(i.scheduledAmount).minus(D(i.paidAmount))));
+
+  // --- VATTI (MONTHLY) METRICS ---
+  const monthlyVattiDisbursed = sumMoney(monthlyVattiLoans.map((l) => l.nominalAmount));
+  const monthlyVattiPrincipalPaid = sumMoney(monthlyVattiLoans.flatMap((l) => l.payments.map((p) => p.principalAmount)));
+  const monthlyVattiOutstandingPrincipal = monthlyVattiDisbursed.minus(monthlyVattiPrincipalPaid).clamp(0, Infinity);
+
+  const monthlyVattiPeriods = monthlyVattiLoans.flatMap((l) => l.interestPeriods);
+  const monthlyVattiAccruedPeriods = monthlyVattiPeriods.filter((p) => p.dueDate.toISOString().slice(0, 10) <= today);
+  const monthlyVattiInterestAccrued = sumMoney(monthlyVattiAccruedPeriods.map((p) => p.scheduledAmount));
+  const monthlyVattiInterestCollected = sumMoney(monthlyVattiLoans.flatMap((l) => l.payments.map((p) => p.interestAmount)));
+  const monthlyVattiInterestPending = monthlyVattiInterestAccrued.minus(monthlyVattiInterestCollected).clamp(0, Infinity);
+  const monthlyVattiTotalOutstanding = monthlyVattiOutstandingPrincipal.plus(monthlyVattiInterestPending);
+
+  const monthlyVattiOverduePeriods = monthlyVattiPeriods.filter((p) => p.status === "OVERDUE");
+  const monthlyVattiOverdueInterest = sumMoney(monthlyVattiOverduePeriods.map((p) => D(p.scheduledAmount).minus(D(p.paidAmount))));
+
+  const monthlyVattiTodayPayments = sumMoney(
+    monthlyVattiLoans.flatMap((l) =>
+      l.payments.filter((p) => p.paidAt >= todayRange.start && p.paidAt < todayRange.end).map((p) => p.amount),
+    ),
   );
-  const overdueOutstanding = money(
-    D(overdueAgg._sum.scheduledAmount ?? 0).minus(D(overdueAgg._sum.paidAmount ?? 0)),
-  );
-  const upcomingOutstanding = money(
-    D(upcomingAgg._sum.scheduledAmount ?? 0).minus(D(upcomingAgg._sum.paidAmount ?? 0)),
+  const monthlyVattiMonthPayments = sumMoney(
+    monthlyVattiLoans.flatMap((l) =>
+      l.payments.filter((p) => p.paidAt >= monthRange.start && p.paidAt < monthRange.end).map((p) => p.amount),
+    ),
   );
 
+  // --- RUN VATI (WEEKLY) METRICS ---
+  const runVatiDisbursed = sumMoney(weeklyRunVatiLoans.map((l) => l.nominalAmount));
+  const runVatiPrincipalPaid = sumMoney(weeklyRunVatiLoans.flatMap((l) => l.payments.map((p) => p.principalAmount)));
+  const runVatiOutstandingPrincipal = runVatiDisbursed.minus(runVatiPrincipalPaid).clamp(0, Infinity);
+
+  const runVatiPeriods = weeklyRunVatiLoans.flatMap((l) => l.interestPeriods);
+  const runVatiAccruedPeriods = runVatiPeriods.filter((p) => p.dueDate.toISOString().slice(0, 10) <= today);
+  const runVatiInterestAccrued = sumMoney(runVatiAccruedPeriods.map((p) => p.scheduledAmount));
+  const runVatiInterestCollected = sumMoney(weeklyRunVatiLoans.flatMap((l) => l.payments.map((p) => p.interestAmount)));
+  const runVatiInterestPending = runVatiInterestAccrued.minus(runVatiInterestCollected).clamp(0, Infinity);
+  const runVatiTotalOutstanding = runVatiOutstandingPrincipal.plus(runVatiInterestPending);
+
+  const runVatiOverduePeriods = runVatiPeriods.filter((p) => p.status === "OVERDUE");
+  const runVatiOverdueInterest = sumMoney(runVatiOverduePeriods.map((p) => D(p.scheduledAmount).minus(D(p.paidAmount))));
+
+  const runVatiWeekPayments = sumMoney(
+    weeklyRunVatiLoans.flatMap((l) =>
+      l.payments.filter((p) => p.paidAt >= weekRange.start && p.paidAt < weekRange.end).map((p) => p.amount),
+    ),
+  );
+
+  // --- CONSOLIDATED OVERALL METRICS ---
+  // Consolidated outstanding:
+  // Thavanai remaining repayment + Vatti (principal + accrued unpaid interest) + Run Vati (principal + accrued unpaid interest)
+  const totalOutstandingReceivables = thavanaiRemaining
+    .plus(monthlyVattiTotalOutstanding)
+    .plus(runVatiTotalOutstanding);
+
+  const totalOverdueAmount = thavanaiOverdueAmount
+    .plus(monthlyVattiOverdueInterest)
+    .plus(runVatiOverdueInterest);
+
+  const totalCashDisbursed = thavanaiDisbursed
+    .plus(monthlyVattiDisbursed)
+    .plus(runVatiDisbursed);
+
+  const totalActiveCollected = thavanaiCollected
+    .plus(monthlyVattiPrincipalPaid)
+    .plus(monthlyVattiInterestCollected)
+    .plus(runVatiPrincipalPaid)
+    .plus(runVatiInterestCollected);
+
+  // Trend map
   const trendMap = new Map<string, number>();
   for (const day of trendDays) trendMap.set(day, 0);
-  for (const payment of trendPayments) {
+  for (const payment of trendPaymentsRaw) {
     const key = getIndiaTodayISO(payment.paidAt);
     if (trendMap.has(key)) trendMap.set(key, (trendMap.get(key) ?? 0) + Number(payment.amount.toString()));
   }
@@ -152,46 +174,157 @@ export async function getDashboardData() {
   const statusCounts: Record<string, number> = {};
   for (const group of statusGroups) statusCounts[group.status] = group._count._all;
 
-  const activeFrequencyGroups = await prisma.loan.groupBy({
-    by: ["frequency"],
-    where: { status: "ACTIVE" },
-    _count: { _all: true },
-    _sum: { totalRepayment: true },
-  });
+  // Due today list (from Thavanai installments + Vatti/Run Vati interest periods)
+  const dueTodayItems = [
+    ...thavanaiLoans.flatMap((l) =>
+      l.installments
+        .filter((i) => i.status === "DUE_TODAY")
+        .map((i) => ({
+          id: i.id,
+          sequence: i.sequence,
+          category: l.category,
+          dueDate: i.dueDate.toISOString().slice(0, 10),
+          outstanding: money(D(i.scheduledAmount).minus(D(i.paidAmount))),
+          status: i.status,
+          loan: { id: l.id, reference: l.reference, category: l.category },
+          customer: l.customer,
+        })),
+    ),
+    ...monthlyVattiLoans.flatMap((l) =>
+      l.interestPeriods
+        .filter((p) => p.status === "DUE_TODAY")
+        .map((p) => ({
+          id: p.id,
+          sequence: p.sequence,
+          category: l.category,
+          dueDate: p.dueDate.toISOString().slice(0, 10),
+          outstanding: money(D(p.scheduledAmount).minus(D(p.paidAmount))),
+          status: p.status,
+          loan: { id: l.id, reference: l.reference, category: l.category },
+          customer: l.customer,
+        })),
+    ),
+    ...weeklyRunVatiLoans.flatMap((l) =>
+      l.interestPeriods
+        .filter((p) => p.status === "DUE_TODAY")
+        .map((p) => ({
+          id: p.id,
+          sequence: p.sequence,
+          category: l.category,
+          dueDate: p.dueDate.toISOString().slice(0, 10),
+          outstanding: money(D(p.scheduledAmount).minus(D(p.paidAmount))),
+          status: p.status,
+          loan: { id: l.id, reference: l.reference, category: l.category },
+          customer: l.customer,
+        })),
+    ),
+  ].slice(0, 8);
+
+  // Upcoming items
+  const upcomingItems = [
+    ...thavanaiLoans.flatMap((l) =>
+      l.installments
+        .filter((i) => (i.status === "UPCOMING" || i.status === "PARTIALLY_PAID") && i.dueDate > todayDate && i.dueDate <= upcomingEnd)
+        .map((i) => ({
+          id: i.id,
+          sequence: i.sequence,
+          category: l.category,
+          dueDate: i.dueDate.toISOString().slice(0, 10),
+          outstanding: money(D(i.scheduledAmount).minus(D(i.paidAmount))),
+          status: i.status,
+          loan: { id: l.id, reference: l.reference, category: l.category },
+          customer: l.customer,
+        })),
+    ),
+    ...monthlyVattiLoans.flatMap((l) =>
+      l.interestPeriods
+        .filter((p) => (p.status === "UPCOMING" || p.status === "PARTIALLY_PAID") && p.dueDate > todayDate && p.dueDate <= upcomingEnd)
+        .map((p) => ({
+          id: p.id,
+          sequence: p.sequence,
+          category: l.category,
+          dueDate: p.dueDate.toISOString().slice(0, 10),
+          outstanding: money(D(p.scheduledAmount).minus(D(p.paidAmount))),
+          status: p.status,
+          loan: { id: l.id, reference: l.reference, category: l.category },
+          customer: l.customer,
+        })),
+    ),
+    ...weeklyRunVatiLoans.flatMap((l) =>
+      l.interestPeriods
+        .filter((p) => (p.status === "UPCOMING" || p.status === "PARTIALLY_PAID") && p.dueDate > todayDate && p.dueDate <= upcomingEnd)
+        .map((p) => ({
+          id: p.id,
+          sequence: p.sequence,
+          category: l.category,
+          dueDate: p.dueDate.toISOString().slice(0, 10),
+          outstanding: money(D(p.scheduledAmount).minus(D(p.paidAmount))),
+          status: p.status,
+          loan: { id: l.id, reference: l.reference, category: l.category },
+          customer: l.customer,
+        })),
+    ),
+  ].slice(0, 8);
+
+  const runVatiData = {
+    activeLoans: weeklyRunVatiLoans.length,
+    principalDisbursed: money(runVatiDisbursed),
+    outstandingPrincipal: money(runVatiOutstandingPrincipal),
+    weeklyInterestAccrued: money(runVatiInterestAccrued),
+    interestCollected: money(runVatiInterestCollected),
+    interestPending: money(runVatiInterestPending),
+    totalOutstanding: money(runVatiTotalOutstanding),
+    weekCollections: money(runVatiWeekPayments),
+    overdueInterest: money(runVatiOverdueInterest),
+    overdueCount: runVatiOverduePeriods.length,
+  };
 
   return {
     today,
-    stats: {
-      activeCustomers: activeCustomerGroups.length,
-      activeLoans: activeLoanCount,
-      activeNominalAmount: activeNominal,
-      activeContractualRepayment: activeRepayment,
-      activeNetDisbursed: activeDisbursed,
-      activeCollected,
-      lifetimeCollected,
-      activeOutstanding: outstandingFrom(activeRepayment, activeCollected),
-      expectedGrossMargin,
-      dueTodayCount: dueTodayAgg._count._all,
-      dueTodayOutstanding: D(dueTodayOutstanding).lt(0) ? "0.00" : dueTodayOutstanding,
-      overdueCount: overdueAgg._count._all,
-      overdueOutstanding: D(overdueOutstanding).lt(0) ? "0.00" : overdueOutstanding,
-      upcomingCount: upcomingAgg._count._all,
-      upcomingOutstanding: D(upcomingOutstanding).lt(0) ? "0.00" : upcomingOutstanding,
-      collectedToday: money(todayCollected._sum.amount ?? 0),
-      collectedWeek: money(weekCollected._sum.amount ?? 0),
-      collectedMonth: money(monthCollected._sum.amount ?? 0),
+    overall: {
+      totalCustomers: totalUniqueCustomers,
+      activeLoans: activeLoans.length,
+      cashDisbursed: money(totalCashDisbursed),
+      amountCollected: money(lifetimePaymentsAgg._sum.amount ?? 0),
+      activeCollected: money(totalActiveCollected),
+      outstandingReceivables: money(totalOutstandingReceivables),
+      overdueAmount: money(totalOverdueAmount),
+      todayCollection: money(todayPaymentsAgg._sum.amount ?? 0),
+      weekCollection: money(weekPaymentsAgg._sum.amount ?? 0),
+      monthCollection: money(monthPaymentsAgg._sum.amount ?? 0),
     },
+    thavanai: {
+      totalLoans: thavanaiLoans.length,
+      amountDisbursed: money(thavanaiDisbursed),
+      repaymentCommitment: money(thavanaiRepayment),
+      totalCollected: money(thavanaiCollected),
+      remainingBalance: money(thavanaiRemaining),
+      todayInstallmentsCount: thavanaiDueToday.length,
+      todayInstallmentsAmount: money(thavanaiDueTodayAmount),
+      overdueInstallmentsCount: thavanaiOverdue.length,
+      overdueInstallmentsAmount: money(thavanaiOverdueAmount),
+      expectedGrossMargin: money(thavanaiGrossMargin),
+    },
+    monthlyVatti: {
+      activeLoans: monthlyVattiLoans.length,
+      principalDisbursed: money(monthlyVattiDisbursed),
+      outstandingPrincipal: money(monthlyVattiOutstandingPrincipal),
+      interestAccrued: money(monthlyVattiInterestAccrued),
+      interestCollected: money(monthlyVattiInterestCollected),
+      interestPending: money(monthlyVattiInterestPending),
+      totalOutstanding: money(monthlyVattiTotalOutstanding),
+      todayCollections: money(monthlyVattiTodayPayments),
+      monthCollections: money(monthlyVattiMonthPayments),
+      overdueInterest: money(monthlyVattiOverdueInterest),
+      overdueCount: monthlyVattiOverduePeriods.length,
+    },
+    runVati: runVatiData,
     trend: trendDays.map((day) => ({
       date: day,
       amount: Number((trendMap.get(day) ?? 0).toFixed(2)),
     })),
     statusCounts,
-    frequencyBreakdown: activeFrequencyGroups.map((group) => ({
-      frequency: group.frequency,
-      count: group._count._all,
-      totalRepayment: money(group._sum.totalRepayment ?? 0),
-    })),
-    recentPayments: recentPayments.map((payment) => ({
+    recentPayments: recentPaymentsRaw.map((payment) => ({
       id: payment.id,
       receiptNumber: payment.receiptNumber,
       amount: money(payment.amount),
@@ -200,37 +333,13 @@ export async function getDashboardData() {
       customer: payment.customer,
       loan: payment.loan,
     })),
-    dueToday: dueTodayRows.map((row) => ({
-      id: row.id,
-      sequence: row.sequence,
-      dueDate: row.dueDate.toISOString().slice(0, 10),
-      outstanding: money(D(row.scheduledAmount).minus(D(row.paidAmount))),
-      status: row.status,
-      loan: { id: row.loan.id, reference: row.loan.reference },
-      customer: row.loan.customer,
-      loanBalance: outstandingFrom(row.loan.totalRepayment, upcomingCollected.get(row.loanId) ?? "0"),
-    })),
-    upcoming: upcomingRows.map((row) => ({
-      id: row.id,
-      sequence: row.sequence,
-      dueDate: row.dueDate.toISOString().slice(0, 10),
-      outstanding: money(D(row.scheduledAmount).minus(D(row.paidAmount))),
-      status: row.status,
-      loan: { id: row.loan.id, reference: row.loan.reference },
-      customer: row.loan.customer,
-      loanBalance: outstandingFrom(row.loan.totalRepayment, upcomingCollected.get(row.loanId) ?? "0"),
-    })),
-    chartMargin: {
-      expectedMargin: Number(expectedGrossMargin),
-      netDisbursed: Number(activeDisbursed),
-      lifetimeCollected: Number(lifetimeCollected),
-      contractualRepayment: Number(activeRepayment),
-    },
+    dueToday: dueTodayItems,
+    upcoming: upcomingItems,
     totalsForCharts: {
-      activeRepayment: toNumberForChart(activeRepayment),
-      activeDisbursed: toNumberForChart(activeDisbursed),
-      activeCollected: toNumberForChart(activeCollected),
-      lifetimeCollected: toNumberForChart(lifetimeCollected),
+      activeRepayment: toNumberForChart(totalOutstandingReceivables),
+      activeDisbursed: toNumberForChart(totalCashDisbursed),
+      activeCollected: toNumberForChart(totalActiveCollected),
+      lifetimeCollected: toNumberForChart(lifetimePaymentsAgg._sum.amount ?? 0),
     },
   };
 }

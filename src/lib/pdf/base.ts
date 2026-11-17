@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
+import { APP_NAME } from "@/lib/constants";
 
 export const PDF_COLORS = {
   ink: "#0f172a",
@@ -22,8 +23,8 @@ export function createPdf(): PDFKit.PDFDocument {
     bufferPages: true,
     margins: { top: 42, bottom: 46, left: 44, right: 44 },
     info: {
-      Creator: "Thavanai Manager",
-      Producer: "Thavanai Manager",
+      Creator: APP_NAME,
+      Producer: APP_NAME,
     },
   });
   const regular = fontPath("NotoSans-Regular.ttf");

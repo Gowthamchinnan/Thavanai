@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Input, SelectNative } from "@/components/ui/input";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
-import { PaymentStatusBadge } from "@/components/shared/status-badge";
+import { LoanCategoryBadge, PaymentStatusBadge } from "@/components/shared/status-badge";
 
 export const metadata: Metadata = { title: "Payments" };
 export const dynamic = "force-dynamic";
@@ -19,24 +19,32 @@ export const dynamic = "force-dynamic";
 export default async function PaymentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; from?: string; to?: string; status?: string; mode?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; from?: string; to?: string; status?: string; mode?: string; page?: string }>;
 }) {
   const sp = await searchParams;
   const result = await listPayments({
     q: sp.q,
+    category: sp.category ?? "ALL",
     from: sp.from,
     to: sp.to,
     status: sp.status ?? "ALL",
     mode: sp.mode ?? "ALL",
     page: Number(sp.page ?? 1) || 1,
   });
-  const hasFilters = Boolean(sp.q || sp.from || sp.to || (sp.status && sp.status !== "ALL") || (sp.mode && sp.mode !== "ALL"));
+  const hasFilters = Boolean(
+    sp.q ||
+      (sp.category && sp.category !== "ALL") ||
+      sp.from ||
+      sp.to ||
+      (sp.status && sp.status !== "ALL") ||
+      (sp.mode && sp.mode !== "ALL"),
+  );
 
   return (
     <div>
       <PageHeader
         title="Payments"
-        description="Immutable ledger of every manually recorded collection. Posted and voided entries remain available for audit."
+        description="Immutable ledger of every manually recorded collection across Thavanai, Vatti, and Run Vati accounts."
         actions={
           <Button asChild size="sm">
             <Link href="/loans">
@@ -52,16 +60,20 @@ export default async function PaymentsPage({
           <p className="num mt-1 text-xl font-semibold">{result.total}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Posted value</p>
-          <p className="num mt-1 text-lg font-semibold">{formatINR(result.summary.postedAmount)}</p>
+          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Total Posted</p>
+          <p className="num mt-1 text-lg font-semibold text-emerald-700 dark:text-emerald-400">{formatINR(result.summary.postedAmount)}</p>
+          <p className="text-[10px] text-muted-foreground">
+            Prin: {formatINR(result.summary.principalAmount)} | Int: {formatINR(result.summary.interestAmount)}
+          </p>
         </Card>
         <Card className="p-4">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Voided entries</p>
-          <p className="num mt-1 text-lg font-semibold">{result.summary.voidedCount}</p>
+          <p className="num mt-1 text-lg font-semibold text-rose-600 dark:text-rose-400">{result.summary.voidedCount}</p>
+          <p className="text-[10px] text-muted-foreground">Excluded from totals</p>
         </Card>
         <Card className="p-4">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Scope</p>
-          <p className="mt-1 text-sm font-medium">{hasFilters ? "Filtered" : "All recorded payments"}</p>
+          <p className="mt-1 text-sm font-medium">{hasFilters ? "Filtered ledger" : "All recorded payments"}</p>
         </Card>
       </div>
 
@@ -82,13 +94,24 @@ export default async function PaymentsPage({
               />
             </div>
           </div>
-          <div className="space-y-1.5 lg:w-40">
+          <div className="space-y-1.5 lg:w-44">
+            <label htmlFor="payment-category" className="text-xs font-medium text-muted-foreground">
+              Category
+            </label>
+            <SelectNative id="payment-category" name="category" defaultValue={sp.category ?? "ALL"}>
+              <option value="ALL">All categories</option>
+              <option value="THAVANAI">Thavanai (Installment)</option>
+              <option value="MONTHLY_VATTI">Vatti (Monthly)</option>
+              <option value="WEEKLY_RUN_VATI">Run Vati (Weekly)</option>
+            </SelectNative>
+          </div>
+          <div className="space-y-1.5 lg:w-36">
             <label htmlFor="payment-from" className="text-xs font-medium text-muted-foreground">
               Paid from
             </label>
             <Input id="payment-from" name="from" type="date" defaultValue={sp.from ?? ""} />
           </div>
-          <div className="space-y-1.5 lg:w-40">
+          <div className="space-y-1.5 lg:w-36">
             <label htmlFor="payment-to" className="text-xs font-medium text-muted-foreground">
               Paid to
             </label>
@@ -120,11 +143,11 @@ export default async function PaymentsPage({
             <Button type="submit" size="sm">
               <Search className="h-4 w-4" /> Filter
             </Button>
-            {hasFilters ? (
+            {hasFilters && (
               <Button asChild variant="ghost" size="sm">
                 <Link href="/payments">Reset</Link>
               </Button>
-            ) : null}
+            )}
           </div>
         </form>
       </Card>
@@ -135,7 +158,7 @@ export default async function PaymentsPage({
           title={hasFilters ? "No payments match these filters" : "No payments recorded yet"}
           description={
             hasFilters
-              ? "Try a wider date range or clear the search."
+              ? "Try adjusting filters or widening the date range."
               : "Payments appear here when you record a manual collection against an active loan."
           }
           actionHref="/loans"
@@ -149,9 +172,10 @@ export default async function PaymentsPage({
                 <thead className="border-b border-border bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 text-left">Receipt</th>
-                    <th className="px-4 py-3 text-left">Paid at</th>
+                    <th className="px-4 py-3 text-left">Category</th>
                     <th className="px-4 py-3 text-left">Customer</th>
                     <th className="px-4 py-3 text-left">Loan</th>
+                    <th className="px-4 py-3 text-left">Paid at</th>
                     <th className="px-4 py-3 text-right">Amount</th>
                     <th className="px-4 py-3 text-left">Mode</th>
                     <th className="px-4 py-3 text-left">Status</th>
@@ -160,13 +184,15 @@ export default async function PaymentsPage({
                 </thead>
                 <tbody className="divide-y divide-border">
                   {result.items.map((payment) => (
-                    <tr key={payment.id} className={payment.status === "VOIDED" ? "text-muted-foreground" : undefined}>
+                    <tr key={payment.id} className={payment.status === "VOIDED" ? "text-muted-foreground opacity-70" : undefined}>
                       <td className="px-4 py-3">
-                        <Link href={`/payments/${payment.id}`} className="num text-xs font-medium hover:underline">
+                        <Link href={`/payments/${payment.id}`} className="num text-xs font-semibold hover:underline">
                           {payment.receiptNumber}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 text-xs">{formatDateTimeIndia(payment.paidAt)}</td>
+                      <td className="px-4 py-3">
+                        <LoanCategoryBadge category={payment.loan.category} className="text-[10px]" />
+                      </td>
                       <td className="px-4 py-3">
                         <Link href={`/customers/${payment.customer.id}`} className="hover:underline">
                           {payment.customer.fullName}
@@ -178,17 +204,18 @@ export default async function PaymentsPage({
                           {payment.loan.reference}
                         </Link>
                       </td>
-                      <td className={`num px-4 py-3 text-right font-medium ${payment.status === "VOIDED" ? "line-through" : ""}`}>
+                      <td className="px-4 py-3 text-xs">{formatDateTimeIndia(payment.paidAt)}</td>
+                      <td className={`num px-4 py-3 text-right font-semibold ${payment.status === "VOIDED" ? "line-through text-muted-foreground" : ""}`}>
                         {formatINR(payment.amount)}
                       </td>
                       <td className="px-4 py-3 text-xs">{PAYMENT_MODE_LABELS[payment.mode] ?? payment.mode}</td>
                       <td className="px-4 py-3">
                         <PaymentStatusBadge status={payment.status} />
-                        {payment.reversal ? (
+                        {payment.reversal && (
                           <p className="mt-0.5 max-w-[180px] truncate text-[10px] text-rose-600 dark:text-rose-400">
                             {payment.reversal.reason}
                           </p>
-                        ) : null}
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <Button asChild variant="outline" size="sm">
@@ -207,7 +234,10 @@ export default async function PaymentsPage({
               <Link key={payment.id} href={`/payments/${payment.id}`} className="card-surface block p-4 hover:bg-muted/30">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="num text-xs font-medium">{payment.receiptNumber}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="num text-xs font-semibold">{payment.receiptNumber}</p>
+                      <LoanCategoryBadge category={payment.loan.category} className="text-[10px]" />
+                    </div>
                     <p className="mt-0.5 text-sm font-medium">{payment.customer.fullName}</p>
                     <p className="num text-[11px] text-muted-foreground">{payment.customer.mobile}</p>
                   </div>
@@ -233,6 +263,7 @@ export default async function PaymentsPage({
             basePath="/payments"
             params={{
               q: sp.q,
+              category: sp.category ?? "ALL",
               from: sp.from,
               to: sp.to,
               mode: sp.mode ?? "ALL",

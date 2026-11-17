@@ -12,11 +12,11 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { PaymentStatusBadge } from "@/components/shared/status-badge";
+import { LoanCategoryBadge, PaymentStatusBadge } from "@/components/shared/status-badge";
 import { WhatsAppShareButton, DownloadPdfButton } from "@/components/shared/whatsapp-share";
 import { VoidPaymentButton } from "@/components/shared/void-payment-button";
 
-export const metadata: Metadata = { title: "Payment receipt" };
+export const metadata: Metadata = { title: "Payment Receipt" };
 export const dynamic = "force-dynamic";
 
 export default async function PaymentDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -24,18 +24,24 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
   const detail = await getPaymentDetail(id);
   if (!detail) notFound();
   const settings = await getSettings();
-  const { payment, customer, loan, totalPaid, remaining, nextDue } = detail;
+  const { payment, customer, loan, totalPaid, principalPaid, interestPaid, remaining, nextDue } = detail;
   const posted = payment.status === "POSTED";
+  const isVatti = loan.category === "MONTHLY_VATTI" || loan.category === "WEEKLY_RUN_VATI";
 
   const message = buildPaymentWhatsAppMessage({
     businessName: settings.businessName,
     customerName: customer.fullName,
     loanReference: loan.reference,
+    category: loan.category,
     receiptNumber: payment.receiptNumber,
     amount: formatINR(payment.amount),
+    principalAmount: payment.principalAmount ? formatINR(payment.principalAmount) : null,
+    interestAmount: payment.interestAmount ? formatINR(payment.interestAmount) : null,
     paymentDate: formatDateTimeIndia(payment.paidAt),
     totalPaid: formatINR(totalPaid),
     remainingBalance: formatINR(remaining),
+    outstandingPrincipal: isVatti ? formatINR(payment.newPrincipal ?? "0") : null,
+    pendingInterest: isVatti ? formatINR(payment.newInterest ?? "0") : null,
     nextDueAmount: nextDue ? formatINR(nextDue.amount) : null,
     nextDueDate: nextDue ? formatDateISO(nextDue.dueDate) : null,
   });
@@ -92,7 +98,10 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
               <CardTitle className="mt-1 flex items-center gap-2 text-lg">
                 <ReceiptText className="h-5 w-5 text-primary" /> Payment receipt
               </CardTitle>
-              <p className="num text-xs text-muted-foreground">{payment.receiptNumber}</p>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="num text-xs text-muted-foreground">{payment.receiptNumber}</span>
+                <LoanCategoryBadge category={loan.category} className="text-[10px]" />
+              </div>
             </div>
             <PaymentStatusBadge status={payment.status} />
           </CardHeader>
@@ -105,6 +114,19 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
               <p className="mt-1 text-xs text-muted-foreground">
                 {formatDateTimeIndia(payment.paidAt)} · {PAYMENT_MODE_LABELS[payment.mode] ?? payment.mode}
               </p>
+
+              {isVatti && (
+                <div className="mt-3 flex flex-wrap gap-4 border-t border-border/50 pt-2 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Principal portion: </span>
+                    <span className="num font-semibold">{formatINR(payment.principalAmount ?? "0")}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Interest portion: </span>
+                    <span className="num font-semibold text-amber-700 dark:text-amber-400">{formatINR(payment.interestAmount ?? "0")}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <Separator />
@@ -124,16 +146,42 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
                 <Link href={`/loans/${loan.id}`} className="font-medium hover:underline">
                   {loan.reference}
                 </Link>
-                <p className="num text-xs text-muted-foreground">Contractual repayment {formatINR(loan.totalRepayment)}</p>
-                <p className="num text-xs text-muted-foreground">Remaining balance {formatINR(remaining)}</p>
+                {isVatti ? (
+                  <>
+                    <p className="num text-xs text-muted-foreground">Principal disbursed: {formatINR(loan.nominalAmount)}</p>
+                    <p className="num text-xs text-muted-foreground">Remaining balance: {formatINR(remaining)}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="num text-xs text-muted-foreground">Contractual repayment {formatINR(loan.totalRepayment)}</p>
+                    <p className="num text-xs text-muted-foreground">Remaining balance {formatINR(remaining)}</p>
+                  </>
+                )}
               </div>
             </div>
 
             <Separator />
 
             <div>
-              <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">Allocated to installments</p>
-              {payment.allocations.length === 0 ? (
+              <p className="mb-2 text-[11px] uppercase tracking-wide text-muted-foreground">
+                {isVatti ? "Interest Cycle Allocation" : "Allocated to installments"}
+              </p>
+              {isVatti ? (
+                payment.interestAllocations.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {Number(payment.principalAmount) > 0 ? "Direct principal reduction (no interest periods allocated)." : "No cycle allocations recorded."}
+                  </p>
+                ) : (
+                  <div className="divide-y divide-border rounded-lg border border-border">
+                    {payment.interestAllocations.map((allocation) => (
+                      <div key={allocation.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                        <span>Interest cycle #{allocation.interestPeriod.sequence}</span>
+                        <span className="num font-medium">{formatINR(allocation.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : payment.allocations.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No installment allocations recorded.</p>
               ) : (
                 <div className="divide-y divide-border rounded-lg border border-border">
@@ -147,6 +195,22 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
               )}
             </div>
 
+            {isVatti && payment.newPrincipal != null && (
+              <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs">
+                <p className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wide mb-1">Balance Snapshot</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-muted-foreground">Principal: </span>
+                    <span className="num font-medium">{formatINR(payment.previousPrincipal ?? "0")} → {formatINR(payment.newPrincipal)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Pending Interest: </span>
+                    <span className="num font-medium">{formatINR(payment.previousInterest ?? "0")} → {formatINR(payment.newInterest ?? "0")}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {payment.notes ? (
               <div>
                 <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Payment notes</p>
@@ -156,7 +220,7 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
 
             <p className="text-[11px] text-muted-foreground">
               Recorded by {payment.createdBy?.name ?? "Administrator"} on {formatDateTimeIndia(payment.createdAt)}. This receipt
-              reflects a manually recorded offline payment; no online payment was processed.
+              reflects a manually recorded offline payment; no online payment gateway was connected.
             </p>
           </CardContent>
         </Card>
@@ -173,6 +237,18 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
                 <span className="text-muted-foreground">Total paid to date</span>
                 <span className="num font-semibold">{formatINR(totalPaid)}</span>
               </div>
+              {isVatti && (
+                <>
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-muted-foreground">Principal repaid</span>
+                    <span className="num font-medium">{formatINR(principalPaid)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-muted-foreground">Interest collected</span>
+                    <span className="num font-medium text-amber-700 dark:text-amber-400">{formatINR(interestPaid)}</span>
+                  </div>
+                </>
+              )}
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">Remaining balance</span>
                 <span className="num font-semibold text-primary">{formatINR(remaining)}</span>
@@ -184,14 +260,16 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
               <Separator />
               {nextDue ? (
                 <div>
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Next installment</p>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    Next {isVatti ? "cycle due" : "installment"}
+                  </p>
                   <p className="num mt-1 font-medium">
                     #{nextDue.sequence} · {formatINR(nextDue.amount)}
                   </p>
                   <p className="text-xs text-muted-foreground">Due {formatDateISO(nextDue.dueDate)}</p>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No further installments remain for this loan.</p>
+                <p className="text-sm text-muted-foreground">No further dues remain for this loan account.</p>
               )}
             </CardContent>
           </Card>
@@ -201,8 +279,8 @@ export default async function PaymentDetailPage({ params }: { params: Promise<{ 
               <CardTitle className="text-base">Correction policy</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-xs text-muted-foreground">
-              <p>Posted payments are never edited. Corrections void the original receipt, restore installment balances and leave a full audit trail.</p>
-              <p>A new payment can be recorded after voiding, with a fresh receipt number and allocation.</p>
+              <p>Posted payments are immutable. Corrections void the original receipt with a documented reason, automatically restore principal and interest balances, and maintain a full audit trail.</p>
+              <p>A replacement manual payment can be recorded with a fresh receipt number.</p>
             </CardContent>
           </Card>
         </div>

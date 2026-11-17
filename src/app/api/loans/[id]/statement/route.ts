@@ -17,7 +17,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!detail) return NextResponse.json({ error: "Loan not found" }, { status: 404 });
 
   const settings = await getSettings();
-  const { loan, customer, installments, payments, stats } = detail;
+  const { loan, customer, installments, interestPeriods, payments, stats } = detail;
 
   const pdf = await buildStatementPdf(
     {
@@ -30,6 +30,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       },
       loan: {
         reference: loan.reference,
+        category: loan.category,
         status: loan.status,
         frequency: loan.frequency,
         nominalAmount: money(loan.nominalAmount),
@@ -38,8 +39,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         totalRepayment: money(loan.totalRepayment),
         installmentAmount: money(loan.installmentAmount),
         installmentCount: loan.installmentCount,
+        interestRate: loan.interestRate ? loan.interestRate.toString() : null,
+        interestType: loan.interestType,
+        collectionDay: loan.collectionDay,
+        maturityDate: loan.maturityDate ? loan.maturityDate.toISOString().slice(0, 10) : null,
         startDate: loan.startDate.toISOString().slice(0, 10),
-        firstDueDate: loan.firstDueDate.toISOString().slice(0, 10),
+        firstDueDate: loan.firstDueDate ? loan.firstDueDate.toISOString().slice(0, 10) : null,
         disbursementDate: loan.disbursementDate ? loan.disbursementDate.toISOString().slice(0, 10) : null,
         notes: loan.notes,
         terms: loan.terms,
@@ -52,10 +57,21 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         paidAmount: money(installment.paidAmount),
         status: installment.status,
       })),
+      interestPeriods: interestPeriods.map((p) => ({
+        sequence: p.sequence,
+        dueDate: p.dueDate.toISOString().slice(0, 10),
+        principalBase: money(p.principalBase),
+        interestRate: p.interestRate.toString(),
+        scheduledAmount: money(p.scheduledAmount),
+        paidAmount: money(p.paidAmount),
+        status: p.status,
+      })),
       payments: payments.map((payment) => ({
         receiptNumber: payment.receiptNumber,
         paidAt: payment.paidAt,
         amount: money(payment.amount),
+        principalAmount: payment.principalAmount ? money(payment.principalAmount) : undefined,
+        interestAmount: payment.interestAmount ? money(payment.interestAmount) : undefined,
         mode: payment.mode,
         status: payment.status,
         notes: payment.notes,
@@ -64,6 +80,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       stats: {
         collected: stats.collected,
         outstanding: stats.outstanding,
+        principalPaid: stats.principalPaid,
+        interestPaid: stats.interestPaid,
+        outstandingPrincipal: stats.outstandingPrincipal,
+        interestAccrued: stats.interestAccrued,
+        interestPending: stats.interestPending,
         expectedGrossMargin: stats.expectedGrossMargin,
         overdueAmount: stats.overdueAmount,
         overdueCount: stats.overdueCount,
