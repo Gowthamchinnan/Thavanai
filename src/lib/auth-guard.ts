@@ -8,7 +8,15 @@ export interface AdminUser {
 }
 
 export async function requireAdmin(): Promise<AdminUser> {
-  const session = await auth();
+  let session = null;
+  try {
+    session = await auth();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("NEXT_REDIRECT")) {
+      throw error;
+    }
+    console.error("requireAdmin error:", error);
+  }
   if (!session?.user?.id) {
     redirect("/login");
   }
@@ -20,11 +28,16 @@ export async function requireAdmin(): Promise<AdminUser> {
 }
 
 export async function getApiAdmin(): Promise<AdminUser | null> {
-  const session = await auth();
-  if (!session?.user?.id) return null;
-  return {
-    id: session.user.id,
-    email: session.user.email ?? "",
-    name: session.user.name ?? "Administrator",
-  };
+  try {
+    const session = await auth();
+    if (!session?.user?.id) return null;
+    return {
+      id: session.user.id,
+      email: session.user.email ?? "",
+      name: session.user.name ?? "Administrator",
+    };
+  } catch (error) {
+    console.error("getApiAdmin error:", error);
+    return null;
+  }
 }

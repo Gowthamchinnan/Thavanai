@@ -8,7 +8,15 @@ import { APP_NAME } from "@/lib/constants";
 export const metadata: Metadata = { title: "Administrator sign in" };
 
 export default async function LoginPage() {
-  const session = await auth();
+  let session = null;
+  try {
+    session = await auth();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("NEXT_REDIRECT")) {
+      throw error;
+    }
+    console.error("Session check on login page:", error);
+  }
   if (session?.user?.id) {
     redirect("/dashboard");
   }

@@ -4,8 +4,23 @@ import { prisma } from "@/lib/db";
 import { verifyPassword } from "@/lib/password";
 import { clientIpFromHeaders, isLoginRateLimited, recordLoginAttempt } from "@/lib/rate-limit";
 
+const authSecret =
+  process.env.AUTH_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  "uQyh9ZYnXwG4K57LGsrAeT19TE9Jyq5z3k2v3dYHwMk=";
+
+if (!process.env.AUTH_SECRET) {
+  process.env.AUTH_SECRET = authSecret;
+}
+if (!process.env.NEXTAUTH_SECRET) {
+  process.env.NEXTAUTH_SECRET = authSecret;
+}
+if (!process.env.AUTH_TRUST_HOST) {
+  process.env.AUTH_TRUST_HOST = "true";
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  secret: process.env.AUTH_SECRET,
+  secret: authSecret,
   trustHost: true,
   session: { strategy: "jwt", maxAge: 8 * 60 * 60, updateAge: 15 * 60 },
   pages: { signIn: "/login" },
