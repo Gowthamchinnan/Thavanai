@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Pencil, Plus } from "lucide-react";
 import { requireAdmin } from "@/lib/auth-guard";
 import { getCustomerDetail } from "@/lib/services/customers";
+import { getCustomerTrackingStatus } from "@/lib/services/tracking";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { ArchiveCustomerButton } from "@/components/shared/archive-customer-button";
 import { CustomerDetailView } from "@/components/customers/customer-detail-view";
+import { TrackingLinkCard } from "@/components/customers/tracking-link-card";
 
 export const metadata: Metadata = { title: "Customer Profile" };
 export const dynamic = "force-dynamic";
@@ -15,8 +18,16 @@ export const dynamic = "force-dynamic";
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin();
   const { id } = await params;
-  const detail = await getCustomerDetail(id);
+  const [detail, trackingState, headerStore] = await Promise.all([
+    getCustomerDetail(id),
+    getCustomerTrackingStatus(id),
+    headers(),
+  ]);
   if (!detail) notFound();
+
+  const proto = headerStore.get("x-forwarded-proto") ?? "https";
+  const host = headerStore.get("x-forwarded-host") ?? headerStore.get("host") ?? "";
+  const originHint = host ? `${proto}://${host}` : "";
 
   const { customer, loans, thavanaiLoans, monthlyVattiLoans, weeklyRunVatiLoans, payments, stats } = detail;
 
@@ -52,6 +63,13 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           This customer is archived. New loans are blocked; financial history remains intact.
         </div>
       ) : null}
+
+      <TrackingLinkCard
+        customerId={customer.id}
+        customerMobile={customer.mobile}
+        initialState={trackingState}
+        originHint={originHint}
+      />
 
       <CustomerDetailView
         customer={customer}

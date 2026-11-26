@@ -191,7 +191,7 @@ export async function createCustomer(
           category: input.initialLoanCategory || "THAVANAI",
           nominalAmount: input.initialNominalAmount,
           deductionAmount: input.initialDeductionAmount || "0",
-          totalRepayment: input.initialTotalRepayment || input.initialNominalAmount,
+          totalRepayment: input.initialNominalAmount,
           installmentAmount: input.initialInstallmentAmount || input.initialNominalAmount,
           frequency: input.initialFrequency || "WEEKLY",
           firstDueDate: today,

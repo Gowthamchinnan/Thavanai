@@ -21,6 +21,10 @@ export function buildWhatsAppUrl(mobile: string, message: string): string | null
   return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
 }
 
+export function buildTrackingWhatsAppMessage(trackingUrl: string): string {
+  return `Hello! You can check your loan repayment status and payment history using this link: ${trackingUrl}`;
+}
+
 export interface PaymentMessageInput {
   businessName: string;
   customerName: string;

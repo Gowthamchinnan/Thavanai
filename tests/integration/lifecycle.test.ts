@@ -5,6 +5,13 @@ import { createCustomer } from "@/lib/services/customers";
 import { createLoan, getLoanDetail } from "@/lib/services/loans";
 import { recordPayment, voidPayment, getPaymentDetail, listPayments } from "@/lib/services/payments";
 import { listCollections } from "@/lib/services/collections";
+import {
+  getCustomerTrackingStatus,
+  getOrCreateCustomerTrackingLink,
+  getPublicCustomerTracking,
+  regenerateCustomerTrackingLink,
+  revokeCustomerTrackingLink,
+} from "@/lib/services/tracking";
 import { getIndiaTodayISO, indiaDateTimeInputNow } from "@/lib/dates";
 
 const databaseUrl = process.env.DATABASE_URL ?? "";
@@ -15,6 +22,9 @@ let loanId = "";
 let firstPaymentId = "";
 
 async function resetDatabase() {
+  await prisma.customerTrackingLink.deleteMany();
+  await prisma.interestAllocation.deleteMany();
+  await prisma.interestPeriod.deleteMany();
   await prisma.paymentReversal.deleteMany();
   await prisma.paymentAllocation.deleteMany();
   await prisma.payment.deleteMany();
@@ -66,8 +76,8 @@ describe("loan and collection lifecycle", () => {
     const loan = await createLoan(
       {
         customerId,
-        nominalAmount: "2600.00",
-        deductionAmount: "100.00",
+        nominalAmount: "3000.00",
+        deductionAmount: "400.00",
         totalRepayment: "3000.00",
         installmentAmount: "1000.00",
         frequency: "WEEKLY",
@@ -173,5 +183,110 @@ describe("loan and collection lifecycle", () => {
 
     const today = await listCollections({ scope: "today", page: 1 });
     expect(today.items.some((item) => item.loan.id === loanId)).toBe(true);
+  });
+
+  it("rejects mismatched Thavanai repayment amount on server creation", async () => {
+    const today = getIndiaTodayISO();
+    await expect(
+      createLoan(
+        {
+          customerId,
+          category: "THAVANAI",
+          nominalAmount: "10000.00",
+          deductionAmount: "0.00",
+          totalRepayment: "12000.00",
+          installmentAmount: "1000.00",
+          frequency: "WEEKLY",
+          startDate: today,
+          firstDueDate: today,
+          installmentCount: "12",
+          activate: true,
+        },
+        adminId,
+      ),
+    ).rejects.toThrow("Repayment amount must equal the loan amount.");
+  });
+
+  it("manages permanent customer tracking links, updates with payments, isolates customers, and revokes/regenerates", async () => {
+    const initialStatus = await getCustomerTrackingStatus(customerId);
+    expect(initialStatus.status).toBe("NONE");
+
+    const generated = await getOrCreateCustomerTrackingLink(customerId, adminId);
+    expect(generated.status).toBe("ACTIVE");
+    expect(generated.trackingPath).toMatch(/^\/track\/[A-Za-z0-9_-]+$/);
+
+    // Calling getOrCreate again must reuse the same link without creating a duplicate
+    const reused = await getOrCreateCustomerTrackingLink(customerId, adminId);
+    expect(reused.trackingPath).toBe(generated.trackingPath);
+
+    const token1 = generated.trackingPath!.replace("/track/", "");
+
+    // Create a second customer + Vatti loan to verify strict isolation
+    const otherCustomer = await createCustomer(
+      {
+        fullName: "Second Isolated Customer",
+        mobile: "9876500001",
+        alternateMobile: "",
+        address: "Secret Address",
+        notes: "Private Admin Note",
+      },
+      adminId,
+    );
+    const today = getIndiaTodayISO();
+    const vattiLoan = await createLoan(
+      {
+        customerId,
+        category: "MONTHLY_VATTI",
+        nominalAmount: "20000.00",
+        deductionAmount: "0.00",
+        interestRate: "3.0",
+        interestType: "FLAT_SIMPLE",
+        startDate: today,
+        activate: true,
+      },
+      adminId,
+    );
+    await recordPayment(
+      {
+        loanId: vattiLoan.id,
+        amount: "600.00",
+        interestAmount: "600.00",
+        principalAmount: "0.00",
+        paidAt: indiaDateTimeInputNow(),
+        mode: "CASH",
+        idempotencyKey: "tracking-vatti-pay-001",
+      },
+      adminId,
+    );
+
+    const tracked = await getPublicCustomerTracking(token1);
+    expect(tracked.ok).toBe(true);
+    if (tracked.ok) {
+      expect(tracked.customerName).toBe("Integration Customer");
+      expect(tracked.loans.length).toBe(2);
+      const trackedVatti = tracked.loans.find((l) => l.category === "MONTHLY_VATTI");
+      expect(trackedVatti).toBeDefined();
+      if (trackedVatti && trackedVatti.category === "MONTHLY_VATTI") {
+        expect(trackedVatti.totalInterestCollected).toBe("600.00");
+        expect(trackedVatti.principalRepaid).toBe("0.00");
+        expect(trackedVatti.remainingPrincipal).toBe("20000.00");
+      }
+      expect(JSON.stringify(tracked)).not.toContain(otherCustomer.fullName);
+      expect(JSON.stringify(tracked)).not.toContain("Private Admin Note");
+    }
+
+    // Revoke link
+    const revoked = await revokeCustomerTrackingLink(customerId, adminId);
+    expect(revoked.status).toBe("REVOKED");
+    const afterRevoke = await getPublicCustomerTracking(token1);
+    expect(afterRevoke.ok).toBe(false);
+
+    // Regenerate link -> new token works, old token remains invalid
+    const regenerated = await regenerateCustomerTrackingLink(customerId, adminId);
+    expect(regenerated.status).toBe("ACTIVE");
+    const token2 = regenerated.trackingPath!.replace("/track/", "");
+    expect(token2).not.toBe(token1);
+    expect((await getPublicCustomerTracking(token1)).ok).toBe(false);
+    expect((await getPublicCustomerTracking(token2)).ok).toBe(true);
   });
 });

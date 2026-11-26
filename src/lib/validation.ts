@@ -149,6 +149,12 @@ export const loanInputSchema = z
     if (value.category === "THAVANAI") {
       if (!isValidMoneyInput(value.totalRepayment)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["totalRepayment"], message: "Total repayment is required" });
+      } else if (nominalValid && !D(value.totalRepayment).eq(D(value.nominalAmount))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["totalRepayment"],
+          message: "Repayment amount must equal the loan amount",
+        });
       }
       if (!isValidMoneyInput(value.installmentAmount)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["installmentAmount"], message: "Installment amount is required" });

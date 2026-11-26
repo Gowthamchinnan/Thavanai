@@ -62,6 +62,13 @@ export function CustomerForm({
 
   const createInitialLoan = watch("createInitialLoan");
   const initialCategory = watch("initialLoanCategory");
+  const initialNominalAmount = watch("initialNominalAmount");
+
+  React.useEffect(() => {
+    if (createInitialLoan && initialCategory === "THAVANAI") {
+      setValue("initialTotalRepayment", initialNominalAmount ?? "");
+    }
+  }, [createInitialLoan, initialCategory, initialNominalAmount, setValue]);
 
   async function onSubmit(values: CustomerInput) {
     if (submittingRef.current) return;
@@ -223,8 +230,21 @@ export function CustomerForm({
 
                 {initialCategory === "THAVANAI" ? (
                   <>
-                    <FormField label="Contractual total repayment (INR)" htmlFor="initialTotalRepayment">
-                      <Input id="initialTotalRepayment" inputMode="decimal" placeholder="30000.00" disabled={isBusy} {...register("initialTotalRepayment")} />
+                    <FormField
+                      label="Contractual total repayment (INR)"
+                      htmlFor="initialTotalRepayment"
+                      hint="Repayment amount is automatically fixed to the loan amount."
+                    >
+                      <Input
+                        id="initialTotalRepayment"
+                        inputMode="decimal"
+                        placeholder="30000.00"
+                        readOnly
+                        tabIndex={-1}
+                        className="bg-muted/50 num cursor-not-allowed"
+                        aria-readonly="true"
+                        {...register("initialTotalRepayment")}
+                      />
                     </FormField>
                     <FormField label="Installment amount (INR)" htmlFor="initialInstallmentAmount">
                       <Input id="initialInstallmentAmount" inputMode="decimal" placeholder="1500.00" disabled={isBusy} {...register("initialInstallmentAmount")} />

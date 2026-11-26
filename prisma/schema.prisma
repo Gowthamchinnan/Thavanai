@@ -53,6 +53,11 @@ enum PaymentStatus {
   VOIDED
 }
 
+enum TrackingLinkStatus {
+  ACTIVE
+  REVOKED
+}
+
 model Admin {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -91,12 +96,28 @@ model Customer {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  loans    Loan[]
-  payments Payment[]
+  loans         Loan[]
+  payments      Payment[]
+  trackingLinks CustomerTrackingLink[]
 
   @@index([fullName])
   @@index([mobile])
   @@index([archivedAt])
+}
+
+model CustomerTrackingLink {
+  id             String             @id @default(cuid())
+  customerId     String
+  tokenHash      String             @unique
+  encryptedToken String
+  status         TrackingLinkStatus @default(ACTIVE)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  revokedAt      DateTime?
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, status])
 }
 
 model Loan {

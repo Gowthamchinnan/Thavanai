@@ -22,6 +22,15 @@ if (!process.env.AUTH_TRUST_HOST) {
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: authSecret,
   trustHost: true,
+  logger: {
+    error(error) {
+      if (error.name === "JWTSessionError") {
+        console.warn("[auth] Ignoring invalid or expired session cookie.");
+        return;
+      }
+      console.error("[auth][error]", error);
+    },
+  },
   session: { strategy: "jwt", maxAge: 8 * 60 * 60, updateAge: 15 * 60 },
   pages: { signIn: "/login" },
   providers: [

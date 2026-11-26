@@ -51,7 +51,7 @@ export function scheduleForLoanInput(input: LoanInput) {
     firstDueDate: input.firstDueDate || input.startDate,
     frequency: input.frequency ?? "WEEKLY",
     installmentAmount: input.installmentAmount || "0",
-    totalRepayment: input.totalRepayment || "0",
+    totalRepayment: input.nominalAmount || "0",
     installmentCount: parseProvidedCount(input.installmentCount),
   });
 }
@@ -88,11 +88,14 @@ export async function createLoan(input: LoanInput, adminId: string, ipAddress?: 
     let runVatiSchedule: ReturnType<typeof buildWeeklyInterestSchedule> | null = null;
 
     if (category === "THAVANAI") {
+      if (input.totalRepayment && input.totalRepayment.trim() !== "" && !D(input.totalRepayment).eq(nominal)) {
+        throw new ServiceError("Repayment amount must equal the loan amount.");
+      }
       thavanaiSchedule = buildSchedule({
         firstDueDate: input.firstDueDate || input.startDate,
         frequency: input.frequency ?? "WEEKLY",
         installmentAmount: input.installmentAmount || "0",
-        totalRepayment: input.totalRepayment || "0",
+        totalRepayment: money(nominal),
         installmentCount: parseProvidedCount(input.installmentCount),
       });
       if (!thavanaiSchedule.ok) throw new ServiceError(thavanaiSchedule.errors[0] ?? "The installment schedule is invalid.");
@@ -129,7 +132,7 @@ export async function createLoan(input: LoanInput, adminId: string, ipAddress?: 
         nominalAmount: money(nominal),
         deductionAmount: money(deduction),
         netDisbursed: money(net),
-        totalRepayment: category === "THAVANAI" ? money(input.totalRepayment || "0") : money(nominal),
+        totalRepayment: money(nominal),
         installmentAmount: category === "THAVANAI" ? money(input.installmentAmount || "0") : "0.00",
         installmentCount,
         frequency: category === "THAVANAI" ? input.frequency : category === "WEEKLY_RUN_VATI" ? "WEEKLY" : "MONTHLY",

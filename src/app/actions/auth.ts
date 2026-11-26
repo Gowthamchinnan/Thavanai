@@ -30,9 +30,6 @@ export async function loginAction(_previous: LoginState, formData: FormData): Pr
       redirectTo: "/dashboard",
     });
   } catch (error) {
-    if (error instanceof AuthError) {
-      return { error: "Invalid email or password." };
-    }
     const digest = (error as { digest?: string } | null)?.digest;
     if (
       (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) ||
@@ -40,8 +37,26 @@ export async function loginAction(_previous: LoginState, formData: FormData): Pr
     ) {
       throw error;
     }
+
+    const causeErr = (error as { cause?: { err?: unknown } } | null)?.cause?.err;
+    const isPrismaErr = (err: unknown) =>
+      err instanceof Error && (err.name.startsWith("Prisma") || err.message.includes("Can't reach database server"));
+
+    if (isPrismaErr(error) || isPrismaErr(causeErr)) {
+      console.error("Login database error:", error);
+      return { error: "Unable to connect to the database. Please check server configuration." };
+    }
+
+    if (
+      error instanceof AuthError ||
+      (error instanceof Error && (error.name === "CredentialsSignin" || error.name === "CallbackRouteError" || error.name === "AuthError"))
+    ) {
+      return { error: "Invalid email or password." };
+    }
+
     console.error("Login action error:", error);
-    return { error: "Unable to connect to the database. Please check server configuration." };
+    const detail = process.env.NODE_ENV === "development" && error instanceof Error ? ` (${error.message.slice(0, 120)})` : "";
+    return { error: `Sign-in failed due to a server error.${detail}` };
   }
   return {};
 }

@@ -25,11 +25,12 @@ test.describe("single-admin loan workflow", () => {
 
     await page.goto("/loans/new");
     await page.locator("#customerId").selectOption({ index: 1 });
-    await page.locator("#nominalAmount").fill("2600.00");
-    await page.locator("#deductionAmount").fill("100.00");
-    await page.locator("#totalRepayment").fill("3000.00");
+    await page.locator("#nominalAmount").fill("3000.00");
+    await page.locator("#deductionAmount").fill("400.00");
+    await expect(page.locator("#totalRepayment")).toHaveValue("3000.00");
+    await expect(page.locator("#totalRepayment")).toHaveAttribute("readonly", "");
     await page.locator("#installmentAmount").fill("1000.00");
-    await page.getByRole("button", { name: "Create loan" }).click();
+    await page.getByRole("button", { name: "Create Thavanai loan" }).click();
     await expect(page).toHaveURL(/\/loans\/[a-z0-9]{20,}$/, { timeout: 30_000 });
     await expect(page.getByText("Contractual repayment", { exact: true })).toBeVisible();
 

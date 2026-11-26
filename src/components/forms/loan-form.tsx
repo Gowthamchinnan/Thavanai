@@ -109,10 +109,18 @@ export function LoanForm({
 
   const nominal = safeMoney(nominalAmount);
   const deduction = safeMoney(deductionAmount);
-  const total = safeMoney(totalRepayment);
+  const total = category === "THAVANAI" ? nominal : safeMoney(totalRepayment);
   const installment = safeMoney(installmentAmount);
   const net = nominal && deduction && deduction.lt(nominal) ? nominal.minus(deduction) : null;
   const margin = total && net ? total.minus(net) : null;
+
+  React.useEffect(() => {
+    if (category === "THAVANAI") {
+      setValue("totalRepayment", nominalAmount ?? "", {
+        shouldValidate: formState.isSubmitted,
+      });
+    }
+  }, [category, nominalAmount, setValue, formState.isSubmitted]);
 
   // Thavanai schedule preview
   const parsedCount = React.useMemo(() => {
@@ -181,7 +189,9 @@ export function LoanForm({
       const idempotencyKey = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `loan-${Date.now()}`;
       const payload: LoanInput = { ...values, idempotencyKey };
 
-      if (payload.category !== "THAVANAI") {
+      if (payload.category === "THAVANAI") {
+        payload.totalRepayment = payload.nominalAmount;
+      } else {
         payload.totalRepayment = payload.nominalAmount;
         payload.installmentAmount = "0";
         payload.firstDueDate = payload.startDate || today;
@@ -239,7 +249,7 @@ export function LoanForm({
             }`}
             onClick={() => {
               setValue("category", "THAVANAI");
-              if (!totalRepayment) setValue("totalRepayment", nominalAmount);
+              setValue("totalRepayment", nominalAmount ?? "");
               if (!installmentAmount && nominalAmount) setValue("installmentAmount", money(D(nominalAmount).dividedBy(20)));
             }}
           >
@@ -379,10 +389,19 @@ export function LoanForm({
                   label="Contractual total repayment (INR)"
                   htmlFor="totalRepayment"
                   error={errors.totalRepayment?.message}
-                  hint="Total repayment obligation agreed."
+                  hint="Repayment amount is automatically fixed to the loan amount."
                   required
                 >
-                  <Input id="totalRepayment" inputMode="decimal" placeholder="30000.00" disabled={isBusy} {...register("totalRepayment")} />
+                  <Input
+                    id="totalRepayment"
+                    inputMode="decimal"
+                    placeholder="30000.00"
+                    readOnly
+                    tabIndex={-1}
+                    className="bg-muted/50 num cursor-not-allowed"
+                    aria-readonly="true"
+                    {...register("totalRepayment")}
+                  />
                 </FormField>
 
                 <FormField label="Installment amount (INR)" htmlFor="installmentAmount" error={errors.installmentAmount?.message} required>
