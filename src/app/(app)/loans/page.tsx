@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Search, Wallet } from "lucide-react";
+import { requireAdmin } from "@/lib/auth-guard";
 import { listLoans } from "@/lib/services/loans";
 import { searchCustomers } from "@/lib/services/customers";
 import { formatINR } from "@/lib/money";
@@ -23,6 +24,7 @@ export default async function LoansPage({
 }: {
   searchParams: Promise<{ q?: string; category?: string; status?: string; frequency?: string; page?: string }>;
 }) {
+  await requireAdmin();
   const sp = await searchParams;
   const today = getIndiaTodayISO();
   const [result, customers] = await Promise.all([

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CircleCheck, ReceiptText, TriangleAlert } from "lucide-react";
+import { requireAdmin } from "@/lib/auth-guard";
 import { getPaymentDetail } from "@/lib/services/payments";
 import { getSettings } from "@/lib/services/settings";
 import { formatINR } from "@/lib/money";
@@ -20,6 +21,7 @@ export const metadata: Metadata = { title: "Payment Receipt" };
 export const dynamic = "force-dynamic";
 
 export default async function PaymentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdmin();
   const { id } = await params;
   const detail = await getPaymentDetail(id);
   if (!detail) notFound();

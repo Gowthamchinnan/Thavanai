@@ -7,6 +7,7 @@ import {
   TriangleAlert,
   Wallet,
 } from "lucide-react";
+import { requireAdmin } from "@/lib/auth-guard";
 import { listCollections, type CollectionScope } from "@/lib/services/collections";
 import { formatINR } from "@/lib/money";
 import { formatDateISO } from "@/lib/dates";
@@ -50,6 +51,7 @@ export async function CollectionsView({
   scope: Exclude<CollectionScope, "all">;
   searchParams: { q?: string; category?: string; frequency?: string; from?: string; to?: string; page?: string };
 }) {
+  await requireAdmin();
   const result = await listCollections({
     scope,
     q: searchParams.q,

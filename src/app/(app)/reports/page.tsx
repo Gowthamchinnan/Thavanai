@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CalendarRange, FileSpreadsheet, ShieldCheck } from "lucide-react";
+import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { getIndiaMonthRange, getIndiaTodayISO, formatDateISO } from "@/lib/dates";
 import { REPORT_TYPE_OPTIONS } from "@/lib/constants";
@@ -11,6 +12,7 @@ export const metadata: Metadata = { title: "Reports" };
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
+  await requireAdmin();
   const range = getIndiaMonthRange();
   const today = getIndiaTodayISO();
   const [customers, activeLoans, postedPayments, overdue] = await Promise.all([

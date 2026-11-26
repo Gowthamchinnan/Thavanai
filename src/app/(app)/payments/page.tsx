@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ReceiptIndianRupee, Search } from "lucide-react";
+import { requireAdmin } from "@/lib/auth-guard";
 import { listPayments } from "@/lib/services/payments";
 import { formatINR } from "@/lib/money";
 import { formatDateTimeIndia } from "@/lib/dates";
@@ -21,6 +22,7 @@ export default async function PaymentsPage({
 }: {
   searchParams: Promise<{ q?: string; category?: string; from?: string; to?: string; status?: string; mode?: string; page?: string }>;
 }) {
+  await requireAdmin();
   const sp = await searchParams;
   const result = await listPayments({
     q: sp.q,

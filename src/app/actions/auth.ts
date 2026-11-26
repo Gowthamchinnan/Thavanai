@@ -17,13 +17,13 @@ export async function loginAction(_previous: LoginState, formData: FormData): Pr
   });
   if (!parsed.success) return { error: "Enter a valid email address and password." };
 
-  const headerStore = await headers();
-  const ipAddress = clientIpFromHeaders(headerStore);
-  if (await isLoginRateLimited(parsed.data.email.toLowerCase(), ipAddress)) {
-    return { error: "Too many failed attempts. Please wait 15 minutes and try again." };
-  }
-
   try {
+    const headerStore = await headers();
+    const ipAddress = clientIpFromHeaders(headerStore);
+    if (await isLoginRateLimited(parsed.data.email.toLowerCase(), ipAddress)) {
+      return { error: "Too many failed attempts. Please wait 15 minutes and try again." };
+    }
+
     await signIn("credentials", {
       email: parsed.data.email,
       password: parsed.data.password,
@@ -33,7 +33,15 @@ export async function loginAction(_previous: LoginState, formData: FormData): Pr
     if (error instanceof AuthError) {
       return { error: "Invalid email or password." };
     }
-    throw error;
+    const digest = (error as { digest?: string } | null)?.digest;
+    if (
+      (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) ||
+      (error instanceof Error && error.message.includes("NEXT_REDIRECT"))
+    ) {
+      throw error;
+    }
+    console.error("Login action error:", error);
+    return { error: "Unable to connect to the database. Please check server configuration." };
   }
   return {};
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { UserPlus, Wallet, ReceiptIndianRupee } from "lucide-react";
+import { requireAdmin } from "@/lib/auth-guard";
 import { getDashboardData } from "@/lib/services/dashboard";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  await requireAdmin();
   const data = await getDashboardData();
 
   return (

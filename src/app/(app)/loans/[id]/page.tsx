@@ -12,6 +12,7 @@ import {
   User,
   Coins,
 } from "lucide-react";
+import { requireAdmin } from "@/lib/auth-guard";
 import { getLoanDetail } from "@/lib/services/loans";
 import { getSettings } from "@/lib/services/settings";
 import { formatINR, percent } from "@/lib/money";
@@ -43,6 +44,7 @@ export const metadata: Metadata = { title: "Loan Detail" };
 export const dynamic = "force-dynamic";
 
 export default async function LoanDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdmin();
   const { id } = await params;
   const detail = await getLoanDetail(id);
   if (!detail) notFound();

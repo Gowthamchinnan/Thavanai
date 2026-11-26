@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Search, UserPlus, Users } from "lucide-react";
+import { requireAdmin } from "@/lib/auth-guard";
 import { listCustomers } from "@/lib/services/customers";
 import { formatINR } from "@/lib/money";
 import { formatDateISO } from "@/lib/dates";
@@ -21,6 +22,7 @@ export default async function CustomersPage({
 }: {
   searchParams: Promise<{ q?: string; status?: string; page?: string }>;
 }) {
+  await requireAdmin();
   const sp = await searchParams;
   const status = sp.status === "archived" || sp.status === "all" ? sp.status : "active";
   const result = await listCustomers({

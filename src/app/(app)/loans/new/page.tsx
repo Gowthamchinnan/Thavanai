@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, UserPlus } from "lucide-react";
+import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { getIndiaTodayISO } from "@/lib/dates";
 import { PageHeader } from "@/components/shared/page-header";
@@ -16,6 +17,7 @@ export default async function NewLoanPage({
 }: {
   searchParams: Promise<{ customerId?: string; category?: string }>;
 }) {
+  await requireAdmin();
   const sp = await searchParams;
   const customers = await prisma.customer.findMany({
     where: { archivedAt: null },

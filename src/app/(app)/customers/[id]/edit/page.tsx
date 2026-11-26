@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { requireAdmin } from "@/lib/auth-guard";
 import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/shared/page-header";
 import { CustomerForm } from "@/components/forms/customer-form";
@@ -12,6 +13,7 @@ export const metadata: Metadata = { title: "Edit customer" };
 export const dynamic = "force-dynamic";
 
 export default async function EditCustomerPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdmin();
   const { id } = await params;
   const customer = await prisma.customer.findUnique({ where: { id } });
   if (!customer) notFound();
